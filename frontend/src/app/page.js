@@ -59,7 +59,7 @@ function MatchCard({ match, index }) {
     <Link
       href={`/match/${match.id}`}
       data-testid={`match-card-${match.id}`}
-      className="block animate-fade-in"
+      className="block w-full animate-fade-in"
       style={{ animationDelay: `${index * 60}ms` }}
     >
       <div className="rounded-2xl bg-surface-card border border-white/[0.08] p-6 flex flex-col gap-4 relative overflow-hidden transition-all duration-300 hover:bg-surface-elevated hover:border-white/20 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)] cursor-pointer h-full">

@@ -26,15 +26,16 @@ Turkish football match analysis app with dark theme (grey + green accents). List
 - [x] Next.js frontend with App Router
 - [x] Home page with hero section + match card grid
 - [x] Match detail page with scoreboard + info cards + analysis placeholders
-- [x] Turkish text with proper diacritical marks (ş, ç, ğ, ü, ö, ı, İ)
+- [x] Turkish text with proper diacritical marks
 - [x] Dark theme (#0A0A0A base, #141415 cards, #10B981 accent)
+- [x] football-data.org API integration working with live data
 - [x] Error state with Turkish message when API key not configured
-- [x] Loading skeleton cards
-- [x] Empty state
+- [x] Loading skeleton cards + empty state
 - [x] Mobile responsive design
-- [x] Glassmorphism header
-- [x] Stadium background hero image
+- [x] Glassmorphism header + stadium background hero
 - [x] Staggered card animations
+- [x] dotenv loading for environment variables
+- [x] Minimal requirements.txt (fastapi, uvicorn, httpx, python-dotenv)
 
 ## API Endpoints
 - GET /api/health - System status
