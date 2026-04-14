@@ -49,7 +49,21 @@ function StatusBadge({ status }) {
   )
 }
 
-function MatchCard({ match, index }) {
+function MiniFormDots({ form }) {
+  if (!form) return null
+  return (
+    <div className="flex items-center gap-1 mt-0.5">
+      {form.split('').slice(0, 5).map((c, i) => {
+        const colors = { G: 'bg-emerald-500', B: 'bg-amber-400', M: 'bg-red-500' }
+        return colors[c] ? (
+          <div key={i} className={`w-2 h-2 rounded-full ${colors[c]}`} />
+        ) : null
+      })}
+    </div>
+  )
+}
+
+function MatchCard({ match, index, form }) {
   const homeScore = match.score?.fullTime?.home
   const awayScore = match.score?.fullTime?.away
   const hasScore = homeScore !== null && awayScore !== null
@@ -85,9 +99,12 @@ function MatchCard({ match, index }) {
               {match.homeTeam?.crest && (
                 <img src={match.homeTeam.crest} alt="" className="w-7 h-7 object-contain" />
               )}
-              <span className="text-base font-semibold text-white">
-                {match.homeTeam?.shortName || match.homeTeam?.name || 'Ev Sahibi'}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-base font-semibold text-white">
+                  {match.homeTeam?.shortName || match.homeTeam?.name || 'Ev Sahibi'}
+                </span>
+                <MiniFormDots form={form?.home} />
+              </div>
             </div>
             {hasScore && (
               <span className={`text-2xl font-black font-outfit tracking-tight ${statusInfo.type === 'live' ? 'text-emerald-400' : 'text-white'}`}>
@@ -101,9 +118,12 @@ function MatchCard({ match, index }) {
               {match.awayTeam?.crest && (
                 <img src={match.awayTeam.crest} alt="" className="w-7 h-7 object-contain" />
               )}
-              <span className="text-base font-semibold text-white">
-                {match.awayTeam?.shortName || match.awayTeam?.name || 'Deplasman'}
-              </span>
+              <div className="flex flex-col">
+                <span className="text-base font-semibold text-white">
+                  {match.awayTeam?.shortName || match.awayTeam?.name || 'Deplasman'}
+                </span>
+                <MiniFormDots form={form?.away} />
+              </div>
             </div>
             {hasScore && (
               <span className={`text-2xl font-black font-outfit tracking-tight ${statusInfo.type === 'live' ? 'text-emerald-400' : 'text-white'}`}>
@@ -158,6 +178,7 @@ export default function Home() {
   const [matches, setMatches] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [formMap, setFormMap] = useState({})
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ''
@@ -178,6 +199,15 @@ export default function Home() {
         setLoading(false)
       })
   }, [])
+
+  useEffect(() => {
+    if (matches.length === 0) return
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    fetch(`${apiUrl}/api/matches/form`)
+      .then(res => res.ok ? res.json() : {})
+      .then(data => setFormMap(data))
+      .catch(() => {})
+  }, [matches])
 
   return (
     <div className="min-h-screen">
@@ -250,7 +280,7 @@ export default function Home() {
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
           >
             {matches.map((match, i) => (
-              <MatchCard key={match.id} match={match} index={i} />
+              <MatchCard key={match.id} match={match} index={i} form={formMap[String(match.id)]} />
             ))}
           </div>
         )}

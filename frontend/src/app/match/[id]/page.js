@@ -277,6 +277,26 @@ export default function MatchDetail() {
       .catch(() => {})
   }, [params.id])
 
+  // Auto refresh for live matches (every 30s)
+  useEffect(() => {
+    if (!match) return
+    const isLive = ['IN_PLAY', 'PAUSED'].includes(match.status)
+    if (!isLive) return
+
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    const interval = setInterval(() => {
+      fetch(`${apiUrl}/api/match/${params.id}`)
+        .then(async (res) => {
+          if (!res.ok) return
+          const data = await res.json()
+          setMatch(data)
+        })
+        .catch(() => {})
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [match?.status, params.id])
+
   if (loading) {
     return (
       <div data-testid="loading-state" className="min-h-screen flex items-center justify-center">

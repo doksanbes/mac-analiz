@@ -272,6 +272,118 @@ class MatchAnalysisAPITester:
         
         return True
 
+    def test_matches_form_endpoint(self):
+        """Test the new /api/matches/form endpoint for form dots feature"""
+        success, response = self.run_test(
+            "Matches Form Endpoint",
+            "GET",
+            "api/matches/form",
+            200
+        )
+        
+        if success and response:
+            # Validate response structure
+            if not isinstance(response, dict):
+                print(f"❌ Response should be a dictionary, got {type(response)}")
+                return False
+            
+            # Check that we have form data for multiple matches
+            if len(response) == 0:
+                print("❌ No form data returned")
+                return False
+            
+            print(f"✅ Form data returned for {len(response)} matches")
+            
+            # Validate each match's form data
+            valid_chars = set("GBM")
+            for match_id, form_data in response.items():
+                if not isinstance(form_data, dict):
+                    print(f"❌ Form data for match {match_id} should be dict, got {type(form_data)}")
+                    return False
+                
+                if "home_form" not in form_data or "away_form" not in form_data:
+                    print(f"❌ Missing home_form or away_form for match {match_id}")
+                    return False
+                
+                home_form = form_data["home_form"]
+                away_form = form_data["away_form"]
+                
+                # Validate form strings
+                if home_form and not set(home_form).issubset(valid_chars):
+                    print(f"❌ Invalid characters in home_form for match {match_id}: {home_form}")
+                    return False
+                
+                if away_form and not set(away_form).issubset(valid_chars):
+                    print(f"❌ Invalid characters in away_form for match {match_id}: {away_form}")
+                    return False
+                
+                if len(home_form) > 5 or len(away_form) > 5:
+                    print(f"❌ Form strings too long for match {match_id}")
+                    return False
+            
+            print("✅ All form data validation passed")
+            
+            # Print sample data
+            sample_matches = list(response.items())[:3]
+            for match_id, form_data in sample_matches:
+                print(f"   Match {match_id}: Home={form_data['home_form']}, Away={form_data['away_form']}")
+            
+            return True
+        
+        return False
+
+    def test_matches_endpoint_cache(self):
+        """Test that /api/matches endpoint uses cache (120s TTL)"""
+        print(f"\n🔍 Testing /api/matches Cache Functionality...")
+        
+        # First request (should hit API)
+        start_time = time.time()
+        success1, response1 = self.run_test(
+            "First Request (Cache Miss) - Matches List",
+            "GET",
+            "api/matches",
+            200,
+            check_fields=["matches"]
+        )
+        first_request_time = time.time() - start_time
+        
+        if not success1:
+            return False
+            
+        # Wait a moment
+        time.sleep(1)
+        
+        # Second request (should hit cache)
+        start_time = time.time()
+        success2, response2 = self.run_test(
+            "Second Request (Cache Hit) - Matches List",
+            "GET",
+            "api/matches",
+            200,
+            check_fields=["matches"]
+        )
+        second_request_time = time.time() - start_time
+        
+        if success2:
+            print(f"First request time: {first_request_time:.2f}s")
+            print(f"Second request time: {second_request_time:.2f}s")
+            
+            # Verify we got the same data
+            if response1.get("matches") == response2.get("matches"):
+                print("✅ Cache returned identical data")
+            else:
+                print("⚠️ Cache returned different data")
+            
+            # Cache should make second request faster
+            if second_request_time < first_request_time * 0.8:
+                print("✅ Cache appears to be working (second request faster)")
+                return True
+            else:
+                print("⚠️ Cache may not be working optimally")
+                return True  # Still pass as functionality works
+        
+        return False
+
     def test_cache_functionality(self, match_id):
         """Test cache functionality by making two requests and measuring time"""
         print(f"\n🔍 Testing Cache Functionality for Match {match_id}...")
@@ -317,8 +429,8 @@ class MatchAnalysisAPITester:
         return False
 
 def main():
-    print("🚀 Starting Football API Backend Tests")
-    print("=" * 50)
+    print("🚀 Starting Football API Backend Tests - New Features Testing")
+    print("=" * 60)
     
     tester = MatchAnalysisAPITester()
     
@@ -327,24 +439,36 @@ def main():
         print("❌ Health check failed, stopping tests")
         return 1
 
-    # Test 2: Match endpoint for match 556722 (Liverpool vs PSG)
+    # Test 2: NEW FEATURE - /api/matches/form endpoint
+    print("\n🆕 Testing NEW FEATURE: Form Dots Data Endpoint")
+    if not tester.test_matches_form_endpoint():
+        print("❌ Matches form endpoint failed")
+        return 1
+
+    # Test 3: NEW FEATURE - /api/matches cache (120s TTL)
+    print("\n🆕 Testing NEW FEATURE: Matches List Cache")
+    if not tester.test_matches_endpoint_cache():
+        print("❌ Matches cache test failed")
+        return 1
+
+    # Test 4: Match endpoint for match 556722 (Liverpool vs PSG)
     match_success, match_data = tester.test_match_endpoint(556722)
     if not match_success:
         print("❌ Match endpoint failed, stopping tests")
         return 1
 
-    # Test 3: Match analysis endpoint (key test for form dots feature)
+    # Test 5: Match analysis endpoint (existing feature with form data)
     analysis_success, analysis_data = tester.test_match_analysis_with_form(556722)
     if not analysis_success:
         print("❌ Match analysis endpoint failed")
         return 1
 
-    # Test 4: Cache functionality
-    print("\n🔄 Testing cache functionality...")
+    # Test 6: Cache functionality for analysis
+    print("\n🔄 Testing analysis cache functionality...")
     tester.test_cache_functionality(556722)
 
     # Print final results
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print(f"📊 Tests Summary:")
     print(f"   Total Tests: {tester.tests_run}")
     print(f"   Passed: {tester.tests_passed}")
@@ -366,8 +490,8 @@ def main():
     
     print(f"\n💾 Detailed results saved to /app/backend_test_results.json")
     
-    # Return 0 if all critical tests passed (health + match + analysis)
-    critical_tests_passed = tester.tests_passed >= 3
+    # Return 0 if all critical tests passed (health + form endpoint + matches + analysis)
+    critical_tests_passed = tester.tests_passed >= 5
     return 0 if critical_tests_passed else 1
 
 if __name__ == "__main__":

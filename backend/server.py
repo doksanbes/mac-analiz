@@ -47,6 +47,9 @@ def get_headers():
 
 @app.get("/api/matches")
 async def get_matches():
+    cached = cache_get("matches_list")
+    if cached:
+        return cached
     headers = get_headers()
     async with httpx.AsyncClient() as client:
         try:
@@ -59,7 +62,9 @@ async def get_matches():
                 raise HTTPException(status_code=403, detail="API anahtar\u0131 ge\u00e7ersiz veya yetkisiz.")
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verileri al\u0131namad\u0131.")
-            return resp.json()
+            data = resp.json()
+            cache_set("matches_list", data)
+            return data
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
 
@@ -719,6 +724,53 @@ async def get_match_analysis(match_id: int):
     result = generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg)
     cache_set(f"analysis_{match_id}", result)
     return result
+
+
+@app.get("/api/matches/form")
+async def get_matches_form():
+    cached = cache_get("all_form")
+    if cached is not None:
+        return cached
+    headers = get_headers()
+    matches_data = cache_get("matches_list")
+    if not matches_data:
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(f"{FOOTBALL_API_BASE}/matches", headers=headers, timeout=15.0)
+                if resp.status_code == 200:
+                    matches_data = resp.json()
+                    cache_set("matches_list", matches_data)
+            except Exception:
+                pass
+    if not matches_data:
+        return {}
+    matches = matches_data.get("matches", [])
+    team_ids = set()
+    for m in matches:
+        hid = m.get("homeTeam", {}).get("id")
+        aid = m.get("awayTeam", {}).get("id")
+        if hid:
+            team_ids.add(hid)
+        if aid:
+            team_ids.add(aid)
+    tasks = [fetch_team_recent(tid, headers) for tid in team_ids]
+    results = await asyncio.gather(*tasks)
+    team_forms = {}
+    for tid, team_matches in zip(team_ids, results):
+        if team_matches:
+            stats = calc_team_stats(tid, team_matches)
+            team_forms[tid] = stats["form_str"]
+    out = {}
+    for m in matches:
+        mid = str(m.get("id"))
+        hid = m.get("homeTeam", {}).get("id")
+        aid = m.get("awayTeam", {}).get("id")
+        out[mid] = {
+            "home_form": team_forms.get(hid, ""),
+            "away_form": team_forms.get(aid, ""),
+        }
+    cache_set("all_form", out)
+    return out
 
 
 @app.get("/api/health")
