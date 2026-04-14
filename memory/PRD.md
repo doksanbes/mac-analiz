@@ -37,11 +37,12 @@ Turkish football match analysis app with dark theme (grey + green accents). List
 - [x] dotenv loading for environment variables
 - [x] Minimal requirements.txt (fastapi, uvicorn, httpx, python-dotenv)
 
-- [x] Analysis system: 4 analysis cards (Maç Özeti, Öne Çıkan Senaryo, Alternatif Senaryo, Risk Notu)
-- [x] Rule-based analysis engine: strong club detection, competition tier, home advantage
-- [x] Backend /api/match/{id}/analysis endpoint
-- [x] Analysis loading skeletons and error states
-- [x] Expanded strong clubs list with accent handling (Fenerbahçe, Beşiktaş, Atlético etc.)
+- [x] Analysis system: 5 data-driven cards (Maç Özeti, KG Analizi, Gol Analizi, MS Eğilimi, Risk Notu)
+- [x] Real stats: last 15 matches, KG/Üst percentages, form strings, W-D-L records
+- [x] Head-to-head data integration
+- [x] Two-legged tie detection (Champions League knockout)
+- [x] In-memory cache (120s TTL) for API rate limiting
+- [x] Backend /api/match/{id}/analysis endpoint with parallel data fetching
 
 ## API Endpoints
 - GET /api/health - System status
