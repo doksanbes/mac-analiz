@@ -375,7 +375,7 @@ def generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg):
         elif avg_kg >= 45:
             kp.append(
                 "KG Var ihtimali biraz daha a\u011f\u0131r bas\u0131yor "
-                "ancak kesin bir e\u011filim yok. Temkinli yakla\u015f\u0131lmal\u0131."
+                "ancak net bir e\u011filim yok. Temkinli yakla\u015f\u0131lmal\u0131."
             )
         else:
             kp.append(
