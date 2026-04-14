@@ -154,6 +154,50 @@ class TurkishFootballAPITester:
         
         return success
 
+    def test_match_analysis_endpoint(self, match_id, match_description):
+        """Test match analysis endpoint"""
+        success, response = self.run_test(
+            f"Match Analysis Endpoint ({match_description})",
+            "GET",
+            f"api/match/{match_id}/analysis",
+            200
+        )
+        
+        # Check if response contains analysis data
+        if success and isinstance(response, dict):
+            # Check for required analysis fields
+            required_fields = ['mac_ozeti', 'one_cikan_senaryo', 'alternatif_senaryo', 'risk_notu']
+            for field in required_fields:
+                if field in response:
+                    print(f"✅ Analysis has required field: {field}")
+                    # Check content length
+                    content = response[field]
+                    if isinstance(content, str) and len(content) > 20:
+                        print(f"✅ Field {field} has meaningful content ({len(content)} chars)")
+                    else:
+                        print(f"❌ Field {field} content too short or invalid")
+                else:
+                    print(f"❌ Analysis missing required field: {field}")
+            
+            # Check for Turkish characters
+            full_text = str(response)
+            turkish_chars = ['ş', 'ç', 'ğ', 'ü', 'ö', 'ı', 'İ', 'Ş', 'Ç', 'Ğ', 'Ü', 'Ö']
+            has_turkish = any(char in full_text for char in turkish_chars)
+            if has_turkish:
+                print("✅ Analysis contains Turkish characters")
+            else:
+                print("⚠️ Analysis may not contain Turkish characters")
+            
+            # Check for betting language (should NOT be present)
+            betting_words = ['banko', 'kesin', 'şunu oyna', 'garanti', 'kesin kazanç']
+            has_betting = any(word in full_text.lower() for word in betting_words)
+            if has_betting:
+                print("❌ Analysis contains betting language")
+            else:
+                print("✅ Analysis does not contain betting language")
+        
+        return success
+
 def main():
     print("🚀 Starting Turkish Football API Tests")
     print("=" * 50)
@@ -167,11 +211,22 @@ def main():
     # Test health endpoint
     tester.test_health_endpoint()
     
-    # Test matches endpoint (should fail with 503)
+    # Test matches endpoint
     tester.test_matches_endpoint()
     
-    # Test match detail endpoint (should fail with 503)
+    # Test match detail endpoint
     tester.test_match_detail_endpoint()
+    
+    # Test analysis endpoints for specific matches
+    print("\n📊 Testing Analysis Endpoints...")
+    test_matches = [
+        (556722, "Liverpool vs PSG"),
+        (556724, "Atletico vs Barcelona"), 
+        (541021, "Portsmouth vs Ipswich")
+    ]
+    
+    for match_id, description in test_matches:
+        tester.test_match_analysis_endpoint(match_id, description)
 
     # Print results
     print("\n" + "=" * 50)

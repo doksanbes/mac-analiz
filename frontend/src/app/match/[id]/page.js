@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar } from 'lucide-react'
+import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar, FileText, Target, Shuffle, ShieldAlert } from 'lucide-react'
 
 const STATUS_MAP = {
   SCHEDULED: { label: 'PLANLI', type: 'upcoming' },
@@ -51,6 +51,102 @@ function InfoCard({ icon: Icon, label, value }) {
         <span className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-500">{label}</span>
       </div>
       <span className="text-sm font-semibold text-white">{value}</span>
+    </div>
+  )
+}
+
+function AnalysisCard({ icon: Icon, title, content, accentColor, index }) {
+  return (
+    <div
+      data-testid={`analysis-card-${index}`}
+      className="rounded-xl bg-surface-card border border-white/[0.08] p-6 flex flex-col gap-4 animate-fade-in transition-all duration-300 hover:border-white/15"
+      style={{ animationDelay: `${index * 80}ms` }}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${accentColor}`}>
+          <Icon className="w-4.5 h-4.5 text-white" />
+        </div>
+        <h3 className="text-base font-semibold text-white font-outfit">{title}</h3>
+      </div>
+      <p className="text-sm text-zinc-400 leading-relaxed">{content}</p>
+    </div>
+  )
+}
+
+function AnalysisSection({ matchId }) {
+  const [analysis, setAnalysis] = useState(null)
+  const [analysisLoading, setAnalysisLoading] = useState(true)
+  const [analysisError, setAnalysisError] = useState(null)
+
+  useEffect(() => {
+    if (!matchId) return
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    fetch(`${apiUrl}/api/match/${matchId}/analysis`)
+      .then(async (res) => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.detail || 'Analiz verileri al\u0131namad\u0131')
+        return data
+      })
+      .then(data => {
+        setAnalysis(data)
+        setAnalysisLoading(false)
+      })
+      .catch(err => {
+        setAnalysisError(err.message)
+        setAnalysisLoading(false)
+      })
+  }, [matchId])
+
+  if (analysisLoading) {
+    return (
+      <div data-testid="analysis-loading" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[0,1,2,3].map(i => (
+          <div key={i} className="rounded-xl bg-surface-card border border-white/[0.08] p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="skeleton w-9 h-9 rounded-lg" />
+              <div className="skeleton w-28 h-5" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="skeleton w-full h-3" />
+              <div className="skeleton w-4/5 h-3" />
+              <div className="skeleton w-3/5 h-3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (analysisError) {
+    return (
+      <div data-testid="analysis-error" className="rounded-xl bg-surface-card border border-red-500/20 p-6 flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+        <p className="text-sm text-zinc-400">{analysisError}</p>
+      </div>
+    )
+  }
+
+  if (!analysis) return null
+
+  const cards = [
+    { icon: FileText, title: 'Ma\u00e7 \u00d6zeti', content: analysis.mac_ozeti, color: 'bg-emerald-500/20' },
+    { icon: Target, title: '\u00d6ne \u00c7\u0131kan Senaryo', content: analysis.one_cikan_senaryo, color: 'bg-sky-500/20' },
+    { icon: Shuffle, title: 'Alternatif Senaryo', content: analysis.alternatif_senaryo, color: 'bg-amber-500/20' },
+    { icon: ShieldAlert, title: 'Risk Notu', content: analysis.risk_notu, color: 'bg-red-500/20' },
+  ]
+
+  return (
+    <div data-testid="analysis-grid" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {cards.map((card, i) => (
+        <AnalysisCard
+          key={i}
+          index={i}
+          icon={card.icon}
+          title={card.title}
+          content={card.content}
+          accentColor={card.color}
+        />
+      ))}
     </div>
   )
 }
@@ -270,24 +366,7 @@ export default function MatchDetail() {
           Analiz
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div
-            data-testid="analysis-placeholder-1"
-            className="rounded-xl bg-surface-card border border-white/[0.08] p-8 flex flex-col items-center justify-center min-h-[160px]"
-          >
-            <span className="text-sm text-zinc-500 text-center">
-              Ma&#231; analiz verileri yak&#305;n zamanda eklenecek.
-            </span>
-          </div>
-          <div
-            data-testid="analysis-placeholder-2"
-            className="rounded-xl bg-surface-card border border-white/[0.08] p-8 flex flex-col items-center justify-center min-h-[160px]"
-          >
-            <span className="text-sm text-zinc-500 text-center">
-              &#304;statistik verileri yak&#305;n zamanda eklenecek.
-            </span>
-          </div>
-        </div>
+        <AnalysisSection matchId={params.id} />
       </section>
     </div>
   )
