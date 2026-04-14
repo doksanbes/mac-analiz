@@ -1,0 +1,143 @@
+{
+  "theme_and_archetype": {
+    "archetype": "Archetype 2: The Performance Pro (Sports Analytics Variant)",
+    "theme": "Dark Theme (Strict)",
+    "mood": "Command-center focus, tactical, premium, analytical",
+    "core_principles": [
+      "No emojis",
+      "Tactical Minimalism: Replace soft shadows with 1px solid strokes or subtle inner glows",
+      "Data Clarity: Use high contrast for match scores and statuses",
+      "Turkish Language Only"
+    ]
+  },
+  "colors": {
+    "background": {
+      "base": "#0A0A0A",
+      "surface": "#141415",
+      "surface_elevated": "#1C1D21",
+      "card_hover": "#22242B"
+    },
+    "accents": {
+      "primary": "#10B981",
+      "primary_hover": "#059669",
+      "primary_glow": "rgba(16, 185, 129, 0.2)",
+      "live_pulse": "#00E676"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1AA",
+      "tertiary": "#71717A",
+      "accent": "#10B981"
+    },
+    "borders": {
+      "default": "rgba(255, 255, 255, 0.08)",
+      "hover": "rgba(255, 255, 255, 0.15)",
+      "accent": "rgba(16, 185, 129, 0.3)"
+    },
+    "status": {
+      "live": {
+        "text": "#10B981",
+        "bg": "rgba(16, 185, 129, 0.1)",
+        "border": "rgba(16, 185, 129, 0.2)"
+      },
+      "finished": {
+        "text": "#A1A1AA",
+        "bg": "rgba(255, 255, 255, 0.05)",
+        "border": "rgba(255, 255, 255, 0.1)"
+      },
+      "upcoming": {
+        "text": "#F4F4F5",
+        "bg": "rgba(255, 255, 255, 0.1)",
+        "border": "rgba(255, 255, 255, 0.15)"
+      }
+    }
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "hierarchy": {
+      "h1_hero": "text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tighter text-white",
+      "h2_section": "text-2xl sm:text-3xl font-semibold tracking-tight text-white",
+      "h3_card": "text-lg sm:text-xl font-medium text-zinc-100",
+      "score": "text-4xl sm:text-5xl font-black tracking-tighter text-white",
+      "body": "text-base text-zinc-400 leading-relaxed",
+      "labels": "text-xs font-bold uppercase tracking-[0.2em] text-zinc-500"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Generous. Use p-6 to p-8 inside match cards.",
+    "grids": {
+      "home_matches": "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+      "match_details": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 (Control Room Pattern)"
+    },
+    "containers": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
+  },
+  "components_and_surfaces": {
+    "header": {
+      "style": "Crystal Glassmorphism",
+      "classes": "fixed top-0 w-full z-50 bg-black/60 backdrop-blur-xl border-b border-white/10",
+      "notes": "Ensure body has pt-[header-height] to prevent overlap."
+    },
+    "match_card": {
+      "style": "Tactical Rounded",
+      "classes": "rounded-2xl bg-[#141415] border border-white/10 p-6 flex flex-col gap-4 relative overflow-hidden transition-all duration-300",
+      "hover_state": "hover:bg-[#1C1D21] hover:border-white/20 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)]",
+      "notes": "Use purely CSS/Tailwind for card wrapper, avoid Shadcn Card if it restricts flexibility."
+    },
+    "status_badge": {
+      "classes": "inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
+      "live_animation": "For live matches, include a w-2 h-2 rounded-full bg-green-500 animate-pulse"
+    },
+    "buttons": {
+      "primary": "bg-emerald-500 text-white hover:bg-emerald-600 rounded-xl px-6 py-3 font-semibold transition-colors",
+      "secondary": "bg-white/5 text-white hover:bg-white/10 border border-white/10 rounded-xl px-6 py-3 font-semibold transition-colors"
+    }
+  },
+  "images": {
+    "home_hero_bg": {
+      "url": "https://images.pexels.com/photos/3991976/pexels-photo-3991976.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Night football match at a packed stadium in England. Use with heavy gradient overlay (bg-gradient-to-b from-black/80 to-[#0A0A0A]).",
+      "category": "hero_background"
+    },
+    "match_detail_hero_bg": {
+      "url": "https://images.pexels.com/photos/35898730/pexels-photo-35898730.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Aerial view of a night football match. Use with very heavy dark overlay (bg-black/80) to make match scores pop.",
+      "category": "hero_background"
+    }
+  },
+  "turkish_translations_guide": {
+    "home_title": "Günün Maçları",
+    "home_subtitle": "En güncel futbol karşılaşmaları ve canlı skorlar.",
+    "match_details": "Maç Detayları",
+    "analysis": "Analiz",
+    "statistics": "İstatistikler",
+    "live": "CANLI",
+    "finished": "MAÇ SONUCU",
+    "upcoming": "BAŞLAMADI",
+    "possession": "Topla Oynama",
+    "shots_on_target": "İsabetli Şut",
+    "corners": "Korner",
+    "fouls": "Faul"
+  },
+  "motion_and_interactions": {
+    "hover_states": "All interactive elements MUST explicitly set hover colors. Example: hover:text-emerald-400.",
+    "transitions": "Use transition-all duration-300 ease-out for cards.",
+    "live_pulse": "Live match badges must have a pulsating green dot using animate-pulse."
+  },
+  "testing": {
+    "requirements": "All interactive elements, cards, and key data points MUST have data-testid attributes (e.g., data-testid=\"match-card-galatasaray-fenerbahce\", data-testid=\"live-status-badge\")."
+  },
+  "instructions_to_main_agent": [
+    "Install required fonts: Outfit and Manrope via Google Fonts.",
+    "Install lucide-react for icons.",
+    "Use react-router-dom for navigation between Home and Match Detail page.",
+    "Build the UI directly in React.js (.js/.jsx files), mapping mock Turkish match data.",
+    "Ensure dark theme is strictly enforced (bg-[#0A0A0A]). No light mode toggle needed as per instructions.",
+    "Do NOT use generic Shadcn Cards for the Match Cards. Use raw HTML/Tailwind divs with the classes defined in components_and_surfaces.match_card.",
+    "Apply data-testid to all buttons, links, and match cards.",
+    "Do NOT add authentication, betting links, or payment flows."
+  ]
+}
