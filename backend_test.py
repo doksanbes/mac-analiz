@@ -61,17 +61,22 @@ class MatchAnalysisAPITester:
         
         if success:
             # Check required fields
-            required_fields = ['mac_ozeti', 'kg_analizi', 'gol_analizi', 'ms_egilimi', 'risk_notu']
+            required_fields = ['mac_ozeti', 'kg_analizi', 'gol_analizi', 'ms_egilimi', 'risk_notu', 'hizli_bakis']
             missing_fields = [field for field in required_fields if field not in response]
             
             if missing_fields:
                 print(f"❌ Missing required fields: {missing_fields}")
                 return False
             else:
-                print("✅ All 5 required analysis fields present")
+                print("✅ All 6 required analysis fields present (including hizli_bakis)")
+                
+            # Test Hızlı Bakış specific requirements
+            hb = response.get('hizli_bakis', {})
+            if not self.test_hizli_bakis(hb, match_id):
+                return False
                 
             # Check for real statistics
-            analysis_text = ' '.join(response.values()).lower()
+            analysis_text = ' '.join([str(v) for v in response.values() if isinstance(v, str)]).lower()
             
             # Check for percentages
             has_percentages = '%' in analysis_text
@@ -89,19 +94,22 @@ class MatchAnalysisAPITester:
             print(f"Contains W-D-L records: {has_wdl}")
             
             # Check for betting language (should NOT be present)
-            # Look for actual betting phrases, not just individual words that could be used in normal context
-            betting_phrases = ['banko oyna', 'kesin oyna', 'garanti gol', 'şunu oyna', 'kesin galibiyet', 'banko bahis']
-            found_betting_phrases = [phrase for phrase in betting_phrases if phrase in analysis_text]
-            if found_betting_phrases:
-                print(f"❌ Contains betting language: {found_betting_phrases} - this should not be present")
+            banned_words = ['banko', 'kesin', 'garanti', 'şunu oyna']
+            found_banned = []
+            for word in banned_words:
+                if word in analysis_text:
+                    found_banned.append(word)
+            
+            if found_banned:
+                print(f"❌ Contains banned words: {found_banned} - this should not be present")
                 return False
             else:
-                print("✅ No betting language found")
+                print("✅ No banned words found in analysis")
             
             # Check for two-legged tie detection (Liverpool vs PSG)
             if match_id == 556722:
-                has_two_leg = 'iki ayaklı' in analysis_text or 'İki ayaklı' in ' '.join(response.values())
-                has_first_match = 'ilk maç' in analysis_text or 'İlk maç' in ' '.join(response.values())
+                has_two_leg = 'iki ayaklı' in analysis_text or 'İki ayaklı' in ' '.join([str(v) for v in response.values() if isinstance(v, str)])
+                has_first_match = 'ilk maç' in analysis_text or 'İlk maç' in ' '.join([str(v) for v in response.values() if isinstance(v, str)])
                 print(f"Two-legged tie detection: {has_two_leg}")
                 print(f"First match result mentioned: {has_first_match}")
                 if not has_two_leg:
@@ -111,6 +119,70 @@ class MatchAnalysisAPITester:
             return True
             
         return False
+
+    def test_hizli_bakis(self, hb, match_id):
+        """Test Hızlı Bakış specific requirements"""
+        print(f"\n🔍 Testing Hızlı Bakış for Match {match_id}...")
+        
+        # Check required fields
+        required_hb_fields = ['ana_senaryo', 'alternatif', 'taraf_egilimi', 'risk_seviyesi']
+        missing_hb_fields = [field for field in required_hb_fields if field not in hb]
+        
+        if missing_hb_fields:
+            print(f"❌ Missing hizli_bakis fields: {missing_hb_fields}")
+            return False
+        else:
+            print("✅ All 4 hizli_bakis fields present")
+        
+        # Check that all values are short (1 line) and in Turkish
+        for field, value in hb.items():
+            if not isinstance(value, str):
+                print(f"❌ {field} is not a string: {type(value)}")
+                return False
+            
+            if '\n' in value:
+                print(f"❌ {field} contains newlines (should be 1 line): {value}")
+                return False
+            
+            if len(value) > 100:  # Reasonable limit for "short"
+                print(f"❌ {field} is too long ({len(value)} chars): {value}")
+                return False
+            
+            # Check for Turkish characters (basic check)
+            turkish_chars = ['ı', 'ğ', 'ü', 'ş', 'ö', 'ç', 'İ', 'Ğ', 'Ü', 'Ş', 'Ö', 'Ç']
+            has_turkish = any(char in value for char in turkish_chars)
+            if not has_turkish and len(value) > 10:  # Allow short English words
+                print(f"⚠️ {field} may not be in Turkish: {value}")
+        
+        print("✅ All hizli_bakis values are short and appear to be in Turkish")
+        
+        # Check risk level values
+        valid_risk_levels = ['Düşük', 'Orta', 'Orta-Yüksek', 'Yüksek', 'Maç tamamlandı', 'Maç devam ediyor']
+        risk_level = hb.get('risk_seviyesi', '')
+        if risk_level not in valid_risk_levels:
+            print(f"❌ Invalid risk level: {risk_level}. Expected one of: {valid_risk_levels}")
+            return False
+        else:
+            print(f"✅ Valid risk level: {risk_level}")
+        
+        # Check for banned words in hizli_bakis
+        banned_words = ['banko', 'kesin', 'garanti', 'şunu oyna']
+        hb_text = ' '.join(hb.values()).lower()
+        found_banned = [word for word in banned_words if word in hb_text]
+        
+        if found_banned:
+            print(f"❌ Hızlı Bakış contains banned words: {found_banned}")
+            return False
+        else:
+            print("✅ No banned words in Hızlı Bakış")
+        
+        # Print the actual values for verification
+        print(f"Ana Senaryo: {hb.get('ana_senaryo', 'N/A')}")
+        print(f"Alternatif: {hb.get('alternatif', 'N/A')}")
+        print(f"Taraf Eğilimi: {hb.get('taraf_egilimi', 'N/A')}")
+        print(f"Risk Seviyesi: {hb.get('risk_seviyesi', 'N/A')}")
+        
+        return True
 
     def test_cache_functionality(self, match_id):
         """Test cache functionality by making two requests and measuring time"""

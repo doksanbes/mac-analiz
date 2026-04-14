@@ -575,7 +575,97 @@ def generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg):
                 "\u00f6ng\u00f6r\u00fclemeyen de\u011fi\u015fkenler sonu\u00e7lar\u0131 etkileyebilir."
             )
 
+    # ========== HIZLI BAKI\u015e ==========
+    qk = {}
+
+    # Ana Senaryo
+    if has_data:
+        avg_kg = (home_stats["kg_pct"] + away_stats["kg_pct"]) / 2
+        avg_o25 = (home_stats["over25_pct"] + away_stats["over25_pct"]) / 2
+        if avg_kg >= 60:
+            qk["ana_senaryo"] = "KG Var daha mant\u0131kl\u0131"
+        elif avg_kg <= 35:
+            qk["ana_senaryo"] = "KG Yok daha mant\u0131kl\u0131"
+        elif avg_o25 >= 60:
+            qk["ana_senaryo"] = "2.5 \u00dcst daha olas\u0131"
+        elif avg_o25 <= 35:
+            qk["ana_senaryo"] = "2.5 Alt daha olas\u0131"
+        else:
+            qk["ana_senaryo"] = "\u00c7eki\u015fmeli ma\u00e7, net e\u011filim yok"
+    elif h_str and a_str:
+        qk["ana_senaryo"] = "KG Var de\u011ferlendirilebilir"
+    elif h_str or a_str:
+        fav = hn if h_str else an
+        qk["ana_senaryo"] = f"{fav} galibiyeti \u00f6ne \u00e7\u0131k\u0131yor"
+    else:
+        qk["ana_senaryo"] = "Ev sahibi avantaj\u0131 k\u0131smi fark yaratabilir"
+
+    # Alternatif
+    if has_data:
+        if avg_kg >= 60 and avg_o25 >= 55:
+            qk["alternatif"] = "2.5 \u00dcst de\u011ferlendirilebilir"
+        elif avg_kg >= 60:
+            qk["alternatif"] = "D\u00fc\u015f\u00fck skorlu KG Var ihtimali var"
+        elif avg_o25 >= 60:
+            qk["alternatif"] = "KG Var ile kombine d\u00fc\u015f\u00fcn\u00fclebilir"
+        elif avg_kg <= 35:
+            qk["alternatif"] = "2.5 Alt senaryosu yak\u0131n"
+        else:
+            qk["alternatif"] = "Beraberlik ihtimali g\u00f6z ard\u0131 edilmemeli"
+    else:
+        qk["alternatif"] = "Beraberlik ihtimali g\u00f6z ard\u0131 edilmemeli"
+
+    # Taraf E\u011filimi
+    if done and has_sc:
+        if ft_h > ft_a:
+            qk["taraf_egilimi"] = f"{hn} galip"
+        elif ft_a > ft_h:
+            qk["taraf_egilimi"] = f"{an} galip"
+        else:
+            qk["taraf_egilimi"] = "Beraberlik"
+    elif has_data:
+        h_wp = round(home_stats["wins"] / max(hp, 1) * 100)
+        a_wp = round(away_stats["wins"] / max(ap, 1) * 100)
+        diff = (h_wp + 10) - a_wp
+        if diff > 25:
+            qk["taraf_egilimi"] = f"{hn} bir ad\u0131m \u00f6nde"
+        elif diff > 10:
+            qk["taraf_egilimi"] = f"{hn} hafif favori"
+        elif diff > -10:
+            qk["taraf_egilimi"] = "Beraberlik ihtimali g\u00fc\u00e7l\u00fc"
+        elif diff > -25:
+            qk["taraf_egilimi"] = f"{an} hafif favori"
+        else:
+            qk["taraf_egilimi"] = f"{an} \u00f6ne \u00e7\u0131k\u0131yor"
+    elif h_str and not a_str:
+        qk["taraf_egilimi"] = f"{hn} bir ad\u0131m \u00f6nde"
+    elif a_str and not h_str:
+        qk["taraf_egilimi"] = f"{an} hafif favori"
+    else:
+        qk["taraf_egilimi"] = "Dengeli e\u015fle\u015fme"
+
+    if two_leg:
+        if two_leg["home_leads"]:
+            qk["taraf_egilimi"] = f"{hn} toplamda \u00f6nde"
+        elif two_leg["away_leads"]:
+            qk["taraf_egilimi"] = f"{an} toplamda \u00f6nde, {hn} a\u00e7\u0131lmak zorunda"
+
+    # Risk Seviyesi
+    risk_count = len(rp)
+    is_cup = "champions" in cn.lower() or "europa" in cn.lower() or "libertadores" in cn.lower()
+    if done or live:
+        qk["risk_seviyesi"] = "Ma\u00e7 tamamland\u0131" if done else "Ma\u00e7 devam ediyor"
+    elif risk_count >= 3 or (is_cup and h_str and a_str):
+        qk["risk_seviyesi"] = "Y\u00fcksek"
+    elif risk_count >= 2 or is_cup:
+        qk["risk_seviyesi"] = "Orta-Y\u00fcksek"
+    elif risk_count >= 1:
+        qk["risk_seviyesi"] = "Orta"
+    else:
+        qk["risk_seviyesi"] = "D\u00fc\u015f\u00fck"
+
     return {
+        "hizli_bakis": qk,
         "mac_ozeti": " ".join(oz),
         "kg_analizi": " ".join(kp),
         "gol_analizi": " ".join(gp),

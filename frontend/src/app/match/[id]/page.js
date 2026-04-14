@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar, FileText, Swords, TrendingUp, Target, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar, FileText, Swords, TrendingUp, Target, ShieldAlert, Zap } from 'lucide-react'
 
 const STATUS_MAP = {
   SCHEDULED: { label: 'PLANLI', type: 'upcoming' },
@@ -128,6 +128,15 @@ function AnalysisSection({ matchId }) {
 
   if (!analysis) return null
 
+  const hb = analysis.hizli_bakis
+
+  const riskColor = {
+    'D\u00fc\u015f\u00fck': 'text-emerald-400',
+    'Orta': 'text-amber-400',
+    'Orta-Y\u00fcksek': 'text-orange-400',
+    'Y\u00fcksek': 'text-red-400',
+  }
+
   const cards = [
     { icon: FileText, title: 'Ma\u00e7 \u00d6zeti', content: analysis.mac_ozeti, color: 'bg-emerald-500/20', full: true },
     { icon: Swords, title: 'KG Analizi', content: analysis.kg_analizi, color: 'bg-sky-500/20' },
@@ -138,6 +147,41 @@ function AnalysisSection({ matchId }) {
 
   return (
     <div data-testid="analysis-grid" className="flex flex-col gap-4">
+      {hb && (
+        <div
+          data-testid="hizli-bakis"
+          className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] to-surface-card p-5 sm:p-6 animate-fade-in"
+        >
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-emerald-400" />
+            </div>
+            <h3 className="text-base font-bold text-white font-outfit tracking-tight">
+              H&#305;zl&#305; Bak&#305;&#351;
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div data-testid="hb-ana-senaryo" className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Ana Senaryo</span>
+              <span className="text-sm font-semibold text-white">{hb.ana_senaryo}</span>
+            </div>
+            <div data-testid="hb-alternatif" className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Alternatif</span>
+              <span className="text-sm font-semibold text-white">{hb.alternatif}</span>
+            </div>
+            <div data-testid="hb-taraf-egilimi" className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Taraf E&#287;ilimi</span>
+              <span className="text-sm font-semibold text-white">{hb.taraf_egilimi}</span>
+            </div>
+            <div data-testid="hb-risk-seviyesi" className="flex flex-col gap-1">
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Risk Seviyesi</span>
+              <span className={`text-sm font-semibold ${riskColor[hb.risk_seviyesi] || 'text-zinc-300'}`}>
+                {hb.risk_seviyesi}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       {cards[0] && (
         <AnalysisCard
           index={0}
