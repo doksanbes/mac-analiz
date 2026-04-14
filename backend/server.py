@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 import httpx
 import os
+
+load_dotenv()
 
 app = FastAPI()
 

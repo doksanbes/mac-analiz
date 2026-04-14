@@ -79,49 +79,78 @@ class TurkishFootballAPITester:
             return False, {}
 
     def test_health_endpoint(self):
-        """Test health endpoint - should return 200 with api_token_configured: false"""
+        """Test health endpoint - should return 200 with api_token_configured: true"""
         success, response = self.run_test(
             "Health Endpoint",
             "GET",
             "api/health",
             200,
-            expected_content={"status": "ok", "api_token_configured": False}
+            expected_content={"status": "ok", "api_token_configured": True}
         )
         return success
 
     def test_matches_endpoint(self):
-        """Test matches endpoint - should return 503 with Turkish error"""
+        """Test matches endpoint - should return 200 with real match data"""
         success, response = self.run_test(
-            "Matches Endpoint (No API Token)",
+            "Matches Endpoint (With API Token)",
             "GET",
             "api/matches",
-            503
+            200
         )
         
-        # Check if response contains Turkish error message
-        if success and isinstance(response, dict) and 'detail' in response:
-            if 'FOOTBALL_DATA_API_TOKEN' in response['detail'] and 'ayarlanmamış' in response['detail']:
-                print("✅ Turkish error message found in response")
+        # Check if response contains matches array
+        if success and isinstance(response, dict):
+            if 'matches' in response and isinstance(response['matches'], list):
+                print(f"✅ Found {len(response['matches'])} matches in response")
+                if len(response['matches']) > 0:
+                    # Check first match structure
+                    first_match = response['matches'][0]
+                    required_fields = ['id', 'homeTeam', 'awayTeam', 'status', 'utcDate']
+                    for field in required_fields:
+                        if field in first_match:
+                            print(f"✅ Match has required field: {field}")
+                        else:
+                            print(f"❌ Match missing required field: {field}")
+                else:
+                    print("⚠️ No matches found in response")
             else:
-                print(f"❌ Expected Turkish error message, got: {response['detail']}")
+                print(f"❌ Expected matches array, got: {response}")
         
         return success
 
     def test_match_detail_endpoint(self):
-        """Test match detail endpoint - should return 503 with Turkish error"""
+        """Test match detail endpoint for Portsmouth vs Ipswich Town (ID: 541021)"""
         success, response = self.run_test(
-            "Match Detail Endpoint (No API Token)",
+            "Match Detail Endpoint (Portsmouth vs Ipswich Town)",
             "GET",
-            "api/match/12345",
-            503
+            "api/match/541021",
+            200
         )
         
-        # Check if response contains Turkish error message
-        if success and isinstance(response, dict) and 'detail' in response:
-            if 'FOOTBALL_DATA_API_TOKEN' in response['detail'] and 'ayarlanmamış' in response['detail']:
-                print("✅ Turkish error message found in response")
-            else:
-                print(f"❌ Expected Turkish error message, got: {response['detail']}")
+        # Check if response contains match data
+        if success and isinstance(response, dict):
+            # Check for required fields
+            required_fields = ['id', 'homeTeam', 'awayTeam', 'status', 'utcDate', 'competition']
+            for field in required_fields:
+                if field in response:
+                    print(f"✅ Match detail has required field: {field}")
+                else:
+                    print(f"❌ Match detail missing required field: {field}")
+            
+            # Check team names
+            if 'homeTeam' in response and 'name' in response['homeTeam']:
+                home_team = response['homeTeam']['name']
+                if 'Portsmouth' in home_team:
+                    print(f"✅ Found Portsmouth as home team: {home_team}")
+                else:
+                    print(f"⚠️ Home team: {home_team}")
+            
+            if 'awayTeam' in response and 'name' in response['awayTeam']:
+                away_team = response['awayTeam']['name']
+                if 'Ipswich' in away_team:
+                    print(f"✅ Found Ipswich as away team: {away_team}")
+                else:
+                    print(f"⚠️ Away team: {away_team}")
         
         return success
 
