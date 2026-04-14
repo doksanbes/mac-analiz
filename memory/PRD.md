@@ -44,6 +44,7 @@ Turkish football match analysis app with dark theme (grey + green accents). List
 - [x] In-memory cache (120s TTL) for API rate limiting
 - [x] Hızlı Bakış (Quick Summary) box: 4 short tags (Ana Senaryo, Alternatif, Taraf Eğilimi, Risk Seviyesi)
 - [x] Risk level color-coded (green/amber/orange/red)
+- [x] Form dots visual: colored dots (G=green, B=yellow, M=red) below team names in scoreboard with hover tooltips
 - [x] Backend /api/match/{id}/analysis endpoint with parallel data fetching
 
 ## API Endpoints
