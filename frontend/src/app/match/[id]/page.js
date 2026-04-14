@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar, FileText, Target, Shuffle, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Clock, Trophy, MapPin, AlertCircle, Calendar, FileText, Swords, TrendingUp, Target, ShieldAlert } from 'lucide-react'
 
 const STATUS_MAP = {
   SCHEDULED: { label: 'PLANLI', type: 'upcoming' },
@@ -129,24 +129,36 @@ function AnalysisSection({ matchId }) {
   if (!analysis) return null
 
   const cards = [
-    { icon: FileText, title: 'Ma\u00e7 \u00d6zeti', content: analysis.mac_ozeti, color: 'bg-emerald-500/20' },
-    { icon: Target, title: '\u00d6ne \u00c7\u0131kan Senaryo', content: analysis.one_cikan_senaryo, color: 'bg-sky-500/20' },
-    { icon: Shuffle, title: 'Alternatif Senaryo', content: analysis.alternatif_senaryo, color: 'bg-amber-500/20' },
+    { icon: FileText, title: 'Ma\u00e7 \u00d6zeti', content: analysis.mac_ozeti, color: 'bg-emerald-500/20', full: true },
+    { icon: Swords, title: 'KG Analizi', content: analysis.kg_analizi, color: 'bg-sky-500/20' },
+    { icon: TrendingUp, title: 'Gol Analizi', content: analysis.gol_analizi, color: 'bg-amber-500/20' },
+    { icon: Target, title: 'Ma\u00e7 Sonucu E\u011filimi', content: analysis.ms_egilimi, color: 'bg-violet-500/20' },
     { icon: ShieldAlert, title: 'Risk Notu', content: analysis.risk_notu, color: 'bg-red-500/20' },
   ]
 
   return (
-    <div data-testid="analysis-grid" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {cards.map((card, i) => (
+    <div data-testid="analysis-grid" className="flex flex-col gap-4">
+      {cards[0] && (
         <AnalysisCard
-          key={i}
-          index={i}
-          icon={card.icon}
-          title={card.title}
-          content={card.content}
-          accentColor={card.color}
+          index={0}
+          icon={cards[0].icon}
+          title={cards[0].title}
+          content={cards[0].content}
+          accentColor={cards[0].color}
         />
-      ))}
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {cards.slice(1).map((card, i) => (
+          <AnalysisCard
+            key={i + 1}
+            index={i + 1}
+            icon={card.icon}
+            title={card.title}
+            content={card.content}
+            accentColor={card.color}
+          />
+        ))}
+      </div>
     </div>
   )
 }

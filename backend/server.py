@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import httpx
 import os
+import asyncio
+import time
 
 load_dotenv()
 
@@ -17,6 +19,20 @@ app.add_middleware(
 )
 
 FOOTBALL_API_BASE = "https://api.football-data.org/v4"
+
+_cache = {}
+CACHE_TTL = 120
+
+
+def cache_get(key):
+    entry = _cache.get(key)
+    if entry and time.time() - entry["t"] < CACHE_TTL:
+        return entry["d"]
+    return None
+
+
+def cache_set(key, data):
+    _cache[key] = {"d": data, "t": time.time()}
 
 
 def get_headers():
@@ -50,6 +66,9 @@ async def get_matches():
 
 @app.get("/api/match/{match_id}")
 async def get_match(match_id: int):
+    cached = cache_get(f"match_{match_id}")
+    if cached:
+        return cached
     headers = get_headers()
     async with httpx.AsyncClient() as client:
         try:
@@ -62,7 +81,9 @@ async def get_match(match_id: int):
                 raise HTTPException(status_code=403, detail="API anahtar\u0131 ge\u00e7ersiz veya yetkisiz.")
             if resp.status_code != 200:
                 raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verisi al\u0131namad\u0131.")
-            return resp.json()
+            data = resp.json()
+            cache_set(f"match_{match_id}", data)
+            return data
         except httpx.TimeoutException:
             raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
 
@@ -72,16 +93,14 @@ STRONG_CLUBS = {
     "paris saint-germain", "manchester united", "arsenal", "chelsea",
     "juventus", "milan", "inter", "borussia dortmund", "atletico",
     "atl\u00e9tico", "tottenham", "napoli", "benfica", "porto", "ajax", "sporting",
-    "roma", "lazio", "sevilla", "villarreal", "leicester", "west ham",
+    "roma", "lazio", "sevilla", "villarreal", "west ham",
     "newcastle", "aston villa", "marseille", "lyon", "monaco", "leverkusen",
     "rb leipzig", "wolfsburg", "fiorentina", "atalanta", "real sociedad",
     "athletic", "betis", "fenerbah\u00e7e", "galatasaray", "be\u015fikta\u015f",
     "trabzonspor", "river plate", "boca juniors", "flamengo", "palmeiras",
-    "celtic", "rangers", "psv", "club brugge", "shakhtar", "dynamo kyiv",
-    "zenit", "olympiacos", "panathinaikos", "slavia", "red bull salzburg",
-    "braga", "lille", "rennes", "nice", "frankfurt", "hoffenheim",
-    "brighton", "crystal palace", "everton", "fulham", "bournemouth",
-    "nottingham forest",
+    "celtic", "rangers", "psv", "club brugge", "shakhtar",
+    "braga", "lille", "rennes", "nice", "frankfurt",
+    "brighton", "crystal palace", "nottingham forest",
 }
 
 TOP_COMPETITIONS = {
@@ -92,6 +111,10 @@ TOP_COMPETITIONS = {
 MID_COMPETITIONS = {
     "championship", "copa libertadores", "eredivisie", "primeira liga",
     "uefa europa conference league", "serie b", "2. bundesliga",
+}
+
+KNOCKOUT_STAGES = {
+    "LAST_16", "ROUND_OF_16", "QUARTER_FINALS", "SEMI_FINALS", "PLAYOFF",
 }
 
 
@@ -109,230 +132,501 @@ def get_comp_tier(comp_name):
     return "lower"
 
 
-def generate_analysis(match_data):
+async def fetch_team_recent(team_id, api_headers):
+    if not team_id:
+        return []
+    cached = cache_get(f"team_{team_id}")
+    if cached is not None:
+        return cached
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                f"{FOOTBALL_API_BASE}/teams/{team_id}/matches",
+                params={"status": "FINISHED", "limit": 15},
+                headers=api_headers,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("matches", [])
+                cache_set(f"team_{team_id}", data)
+                return data
+        except Exception:
+            pass
+    return []
+
+
+async def fetch_h2h(match_id, api_headers):
+    cached = cache_get(f"h2h_{match_id}")
+    if cached is not None:
+        return cached
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                f"{FOOTBALL_API_BASE}/matches/{match_id}/head2head",
+                params={"limit": 10},
+                headers=api_headers,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                cache_set(f"h2h_{match_id}", data)
+                return data
+        except Exception:
+            pass
+    return None
+
+
+def calc_team_stats(team_id, matches):
+    s = {
+        "played": 0, "wins": 0, "draws": 0, "losses": 0,
+        "gf": 0, "ga": 0,
+        "kg": 0, "over25": 0, "cs": 0, "fts": 0,
+        "form": [],
+    }
+    for m in matches:
+        if m.get("status") != "FINISHED":
+            continue
+        ft = m.get("score", {}).get("fullTime", {})
+        hs, aws = ft.get("home"), ft.get("away")
+        if hs is None or aws is None:
+            continue
+        is_home = m.get("homeTeam", {}).get("id") == team_id
+        gf = hs if is_home else aws
+        ga = aws if is_home else hs
+        s["played"] += 1
+        s["gf"] += gf
+        s["ga"] += ga
+        if gf > ga:
+            s["wins"] += 1
+            s["form"].append("G")
+        elif gf == ga:
+            s["draws"] += 1
+            s["form"].append("B")
+        else:
+            s["losses"] += 1
+            s["form"].append("M")
+        if hs > 0 and aws > 0:
+            s["kg"] += 1
+        if hs + aws > 2:
+            s["over25"] += 1
+        if ga == 0:
+            s["cs"] += 1
+        if gf == 0:
+            s["fts"] += 1
+    n = max(s["played"], 1)
+    s["avg_gf"] = round(s["gf"] / n, 1)
+    s["avg_ga"] = round(s["ga"] / n, 1)
+    s["kg_pct"] = round(s["kg"] / n * 100)
+    s["over25_pct"] = round(s["over25"] / n * 100)
+    s["form_str"] = "".join(s["form"][:5])
+    return s
+
+
+def calc_h2h_stats(home_id, h2h_data):
+    if not h2h_data:
+        return None
+    agg = h2h_data.get("aggregates", {})
+    matches = h2h_data.get("matches", [])
+    if not matches and not agg:
+        return None
+    ha = agg.get("homeTeam", {})
+    aa = agg.get("awayTeam", {})
+    s = {
+        "played": agg.get("numberOfMatches", 0),
+        "total_goals": agg.get("totalGoals", 0),
+        "home_wins": ha.get("wins", 0),
+        "away_wins": aa.get("wins", 0),
+        "draws": ha.get("draws", 0),
+        "kg": 0, "over25": 0,
+    }
+    for m in matches:
+        ft = m.get("score", {}).get("fullTime", {})
+        hs, aws = ft.get("home"), ft.get("away")
+        if hs is None or aws is None:
+            continue
+        if hs > 0 and aws > 0:
+            s["kg"] += 1
+        if hs + aws > 2:
+            s["over25"] += 1
+    nm = max(len(matches), 1)
+    s["avg_goals"] = round(s["total_goals"] / max(s["played"], 1), 1)
+    s["kg_pct"] = round(s["kg"] / nm * 100)
+    s["over25_pct"] = round(s["over25"] / nm * 100)
+    return s
+
+
+def detect_two_leg(match_data, h2h_data):
+    stage = match_data.get("stage", "")
+    if stage not in KNOCKOUT_STAGES:
+        return None
+    if not h2h_data or not h2h_data.get("matches"):
+        return None
+    match_id = match_data.get("id")
+    comp_id = match_data.get("competition", {}).get("id")
+    away_id = match_data.get("awayTeam", {}).get("id")
+    for m in h2h_data["matches"]:
+        if m.get("id") == match_id or m.get("competition", {}).get("id") != comp_id:
+            continue
+        if m.get("status") != "FINISHED":
+            continue
+        ft = m.get("score", {}).get("fullTime", {})
+        hs, aws = ft.get("home"), ft.get("away")
+        if hs is None or aws is None:
+            continue
+        fl_home_id = m.get("homeTeam", {}).get("id")
+        if fl_home_id == away_id:
+            return {
+                "score": f"{hs}-{aws}",
+                "home_first_away": aws,
+                "away_first_home": hs,
+                "home_leads": aws > hs,
+                "away_leads": hs > aws,
+                "tied": hs == aws,
+            }
+    return None
+
+
+def f(v):
+    if v == int(v):
+        return str(int(v))
+    return str(round(v, 1))
+
+
+def generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg):
     home = match_data.get("homeTeam", {})
     away = match_data.get("awayTeam", {})
     comp = match_data.get("competition", {})
     status = match_data.get("status", "")
     score = match_data.get("score", {})
 
-    home_name = home.get("shortName") or home.get("name") or "Ev Sahibi"
-    away_name = away.get("shortName") or away.get("name") or "Deplasman"
-    comp_name = comp.get("name") or "Bilinmeyen Lig"
-    comp_tier = get_comp_tier(comp_name)
+    hn = home.get("shortName") or home.get("name") or "Ev Sahibi"
+    an = away.get("shortName") or away.get("name") or "Deplasman"
+    cn = comp.get("name") or ""
+    tier = get_comp_tier(cn)
+    h_str = is_strong(home.get("name", ""))
+    a_str = is_strong(away.get("name", ""))
 
-    home_strong = is_strong(home.get("name", ""))
-    away_strong = is_strong(away.get("name", ""))
+    ft_h = score.get("fullTime", {}).get("home")
+    ft_a = score.get("fullTime", {}).get("away")
+    has_sc = ft_h is not None and ft_a is not None
+    done = status == "FINISHED"
+    live = status in ("IN_PLAY", "PAUSED")
 
-    home_score = score.get("fullTime", {}).get("home")
-    away_score = score.get("fullTime", {}).get("away")
-    has_score = home_score is not None and away_score is not None
-    is_finished = status == "FINISHED"
-    is_live = status in ("IN_PLAY", "PAUSED")
+    hp = home_stats["played"] if home_stats else 0
+    ap = away_stats["played"] if away_stats else 0
+    has_data = hp >= 3 and ap >= 3
 
-    # --- Ma\u00e7 \u00d6zeti ---
-    if is_finished and has_score:
-        if home_score > away_score:
-            ozet = (
-                f"{home_name}, kendi sahas\u0131nda {away_name} kar\u015f\u0131s\u0131nda "
-                f"{home_score}-{away_score} skoruyla galip ayr\u0131ld\u0131. "
-                f"{comp_name} kapsam\u0131nda oynanan ma\u00e7ta ev sahibi ekip "
-                f"beklentilere uygun bir performans sergiledi."
-            )
-        elif away_score > home_score:
-            ozet = (
-                f"{away_name}, deplasmanda {home_name} kar\u015f\u0131s\u0131nda "
-                f"{away_score}-{home_score} skoruyla galip ayr\u0131ld\u0131. "
-                f"Deplasman ekibinin etkili bir performans ortaya koydu\u011fu g\u00f6r\u00fcld\u00fc."
-            )
+    # ========== MA\u00c7 \u00d6ZET\u0130 ==========
+    oz = []
+    if done and has_sc:
+        if ft_h > ft_a:
+            oz.append(f"{hn}, sahas\u0131nda {an} kar\u015f\u0131s\u0131nda {ft_h}-{ft_a} galip.")
+        elif ft_a > ft_h:
+            oz.append(f"{an}, deplasmanda {hn}'yi {ft_a}-{ft_h} ma\u011flup etti.")
         else:
-            ozet = (
-                f"{home_name} ile {away_name} aras\u0131ndaki m\u00fccadele "
-                f"{home_score}-{away_score} beraberlikle sona erdi. "
-                f"Her iki tak\u0131m da birbirine \u00fcst\u00fcnl\u00fck sa\u011flayamad\u0131."
-            )
-    elif is_live and has_score:
-        ozet = (
-            f"{home_name} - {away_name} ma\u00e7\u0131 \u015fu an devam ediyor. "
-            f"Anl\u0131k skor {home_score}-{away_score}. "
-            f"{comp_name} kapsam\u0131nda oynanan kar\u015f\u0131la\u015fma heyecan\u0131n\u0131 koruyor."
-        )
+            oz.append(f"{hn} - {an} m\u00fccadelesi {ft_h}-{ft_a} beraberlikle sonu\u00e7land\u0131.")
+    elif live and has_sc:
+        oz.append(f"{hn} - {an} devam ediyor. Anl\u0131k skor: {ft_h}-{ft_a}.")
     else:
-        if home_strong and away_strong:
-            ozet = (
-                f"{comp_name} kapsam\u0131nda \u00f6nemli bir kar\u015f\u0131la\u015fma. "
-                f"{home_name} ve {away_name} her ikisi de g\u00fc\u00e7l\u00fc kadrolar. "
-                f"Ev sahibi avantaj\u0131 {home_name} i\u00e7in k\u0131smi bir \u00fcst\u00fcnl\u00fck sa\u011flasa da, "
-                f"iki tak\u0131m\u0131n kalitesi dengeyi koruyor."
-            )
-        elif home_strong:
-            ozet = (
-                f"{home_name}, kendi sahas\u0131nda {away_name} ile kar\u015f\u0131la\u015facak. "
-                f"Kadro kalitesi ve ev sahibi avantaj\u0131 {home_name} lehine g\u00f6r\u00fcn\u00fcyor. "
-                f"Ancak futbolda s\u00fcrprizler her zaman m\u00fcmk\u00fcn."
-            )
-        elif away_strong:
-            ozet = (
-                f"{away_name}, deplasmanda {home_name} kar\u015f\u0131s\u0131na \u00e7\u0131kacak. "
-                f"Kadro kalitesi a\u00e7\u0131s\u0131ndan {away_name} \u00f6ne \u00e7\u0131ksa da, "
-                f"ev sahibi avantaj\u0131 dengeleyici bir fakt\u00f6r olabilir."
-            )
+        oz.append(f"{cn} kapsam\u0131nda {hn} ile {an} kar\u015f\u0131 kar\u015f\u0131ya.")
+    if has_data:
+        oz.append(
+            f"{hn} son {hp} ma\u00e7ta {home_stats['wins']}G-{home_stats['draws']}B-{home_stats['losses']}M "
+            f"(ma\u00e7 ba\u015f\u0131 ort. {f(home_stats['avg_gf'])} gol at\u0131yor, {f(home_stats['avg_ga'])} gol yiyor). "
+            f"{an} son {ap} ma\u00e7ta {away_stats['wins']}G-{away_stats['draws']}B-{away_stats['losses']}M "
+            f"(ma\u00e7 ba\u015f\u0131 ort. {f(away_stats['avg_gf'])} gol at\u0131yor, {f(away_stats['avg_ga'])} gol yiyor)."
+        )
+        oz.append(f"Form: {hn} [{home_stats['form_str']}] \u2013 {an} [{away_stats['form_str']}].")
+    elif h_str and a_str:
+        oz.append("Her iki tak\u0131m da kaliteli kadroya sahip, \u00e7eki\u015fmeli bir ma\u00e7 bekleniyor.")
+    elif h_str:
+        oz.append(f"{hn} kadro kalitesi ve ev sahibi avantaj\u0131yla \u00f6ne \u00e7\u0131k\u0131yor.")
+    elif a_str:
+        oz.append(f"{an} kadro kalitesiyle \u00f6ne \u00e7\u0131ksa da deplasman fakt\u00f6r\u00fc dengeleyici.")
+    if two_leg:
+        oz.append(f"\u0130ki ayakl\u0131 e\u015fle\u015fmenin ikinci ma\u00e7\u0131. \u0130lk ma\u00e7 sonucu: {two_leg['score']}.")
+        if two_leg["home_leads"]:
+            oz.append(f"{hn} toplamda \u00f6nde, kontroll\u00fc bir oyun tercih edebilir.")
+        elif two_leg["away_leads"]:
+            oz.append(f"{an} toplamda \u00f6nde. {hn} a\u00e7\u0131lmak zorunda kalabilir.")
         else:
-            ozet = (
-                f"{comp_name} kapsam\u0131nda {home_name} ile {away_name} kar\u015f\u0131 kar\u015f\u0131ya geliyor. "
-                f"Her iki tak\u0131m da benzer seviyelerde de\u011ferlendirilebilir. "
-                f"Ev sahibi avantaj\u0131 k\u0131smi bir fark yaratabilir."
-            )
+            oz.append("Toplam skor e\u015fit, her \u015fey bu ma\u00e7ta belirlenecek.")
+    if h2h_stats and h2h_stats["played"] >= 3:
+        oz.append(
+            f"Kar\u015f\u0131l\u0131kl\u0131 ge\u00e7mi\u015f (son {h2h_stats['played']} ma\u00e7): "
+            f"{hn} {h2h_stats['home_wins']}G, {h2h_stats['draws']}B, {an} {h2h_stats['away_wins']}G."
+        )
 
-    # --- \u00d6ne \u00c7\u0131kan Senaryo ---
-    if is_finished and has_score:
-        if home_score > away_score:
-            senaryo = (
-                f"Ma\u00e7 {home_name} galibiyetiyle sonu\u00e7land\u0131. "
-                f"Ev sahibi tak\u0131m\u0131n sahas\u0131ndaki avantaj\u0131n\u0131 kulland\u0131\u011f\u0131 bir kar\u015f\u0131la\u015fma oldu."
+    # ========== KG ANAL\u0130Z\u0130 ==========
+    kp = []
+    if has_data:
+        avg_kg = (home_stats["kg_pct"] + away_stats["kg_pct"]) / 2
+        kp.append(
+            f"{hn} son {hp} ma\u00e7\u0131n\u0131n %{home_stats['kg_pct']}'inde, "
+            f"{an} son {ap} ma\u00e7\u0131n\u0131n %{away_stats['kg_pct']}'inde kar\u015f\u0131l\u0131kl\u0131 gol var."
+        )
+        if h2h_stats and h2h_stats["played"] >= 3:
+            kp.append(f"Kar\u015f\u0131l\u0131kl\u0131 ma\u00e7larda KG oran\u0131: %{h2h_stats['kg_pct']}.")
+        if avg_kg >= 65:
+            kp.append(
+                "KG Var taraf\u0131 daha mant\u0131kl\u0131 g\u00f6r\u00fcn\u00fcyor. "
+                "Her iki tak\u0131m da gol bulma e\u011filiminde."
             )
-        elif away_score > home_score:
-            senaryo = (
-                f"Deplasman ekibi {away_name} ma\u00e7tan galip ayr\u0131ld\u0131. "
-                f"Ev sahibi avantaj\u0131na ra\u011fmen {away_name} fark\u0131n\u0131 ortaya koydu."
+        elif avg_kg >= 45:
+            kp.append(
+                "KG Var ihtimali biraz daha a\u011f\u0131r bas\u0131yor "
+                "ancak kesin bir e\u011filim yok. Temkinli yakla\u015f\u0131lmal\u0131."
             )
         else:
-            senaryo = (
-                f"Ma\u00e7 beraberlikle sona erdi. \u0130ki tak\u0131m\u0131n birbirine denk "
-                f"g\u00fc\u00e7te oldu\u011fu bir kar\u015f\u0131la\u015fma ya\u015fand\u0131."
+            kp.append(
+                "KG Yok taraf\u0131 daha olas\u0131 duruyor. "
+                "En az bir tak\u0131m\u0131n gol bulmakta zorland\u0131\u011f\u0131 g\u00f6r\u00fcl\u00fcyor."
             )
-    elif home_strong and away_strong:
-        senaryo = (
-            f"Her iki tak\u0131m da kaliteli kadroya sahip. "
-            f"\u00d6ne \u00e7\u0131kan ihtimal d\u00fc\u015f\u00fck skorlu ve \u00e7eki\u015fmeli bir ma\u00e7 olmas\u0131. "
-            f"Ev sahibi {home_name} hafif avantajl\u0131 g\u00f6r\u00fcnse de, "
-            f"beraberlik ihtimali de g\u00f6z ard\u0131 edilmemeli."
-        )
-    elif home_strong:
-        senaryo = (
-            f"{home_name} galibiyeti daha olas\u0131 g\u00f6r\u00fcn\u00fcyor. "
-            f"Ev sahibi avantaj\u0131 ve kadro kalitesi {home_name} lehine \u00f6ne \u00e7\u0131kan fakt\u00f6rler. "
-            f"Ev sahibi ekibin kontrol\u00fc elinde tuttu\u011fu bir ma\u00e7 beklenebilir."
-        )
-    elif away_strong:
-        senaryo = (
-            f"{away_name} deplasmanda da favori konumunda. "
-            f"Kadro derinli\u011fi ve kalitesi \u00f6ne \u00e7\u0131kan fakt\u00f6rler. "
-            f"Ancak deplasman zorluklar\u0131 g\u00f6z \u00f6n\u00fcnde bulundurulmal\u0131."
-        )
+        if home_stats["fts"] >= 2:
+            kp.append(f"{hn} son {hp} ma\u00e7ta {home_stats['fts']} kez gols\u00fcz kald\u0131.")
+        if away_stats["fts"] >= 2:
+            kp.append(f"{an} son {ap} ma\u00e7ta {away_stats['fts']} kez gols\u00fcz kald\u0131.")
+        if home_stats["cs"] >= 3:
+            kp.append(f"{hn} savunmada sa\u011flam: son {hp} ma\u00e7ta {home_stats['cs']} kez gol yemedi.")
+        if away_stats["cs"] >= 3:
+            kp.append(f"{an} savunmada sa\u011flam: son {ap} ma\u00e7ta {away_stats['cs']} kez gol yemedi.")
     else:
-        if comp_tier == "top":
-            senaryo = (
-                f"\u00dcst d\u00fczey bir ligde oynanan bu ma\u00e7ta ev sahibi avantaj\u0131 belirleyici olabilir. "
-                f"{home_name} hafif \u00f6ne \u00e7\u0131ksa da, "
-                f"\u00e7eki\u015fmeli bir m\u00fccadele bekleniyor."
+        if h_str and a_str:
+            kp.append("Her iki tak\u0131m da kaliteli h\u00fccum hatt\u0131na sahip. KG Var daha mant\u0131kl\u0131 g\u00f6r\u00fcn\u00fcyor.")
+        elif h_str or a_str:
+            strong_n = hn if h_str else an
+            weak_n = an if h_str else hn
+            kp.append(f"{strong_n} gol bulma konusunda sorun ya\u015famaz, {weak_n}'nin gol kapasitesi belirleyici.")
+        else:
+            kp.append("Detayl\u0131 istatistik verisi mevcut de\u011fil. Ma\u00e7\u0131n ba\u011flam\u0131na g\u00f6re de\u011ferlendirilmeli.")
+    if two_leg:
+        if two_leg["away_leads"]:
+            kp.append(
+                f"Toplamda geride olan {hn} gol aramak zorunda. "
+                "Bu durum KG Var ihtimalini art\u0131r\u0131yor."
+            )
+        elif two_leg["home_leads"]:
+            kp.append(
+                f"{an} skor bulmak zorunda, bu a\u00e7\u0131lmaya neden olabilir. "
+                "Kontr atak f\u0131rsatlar\u0131yla KG Var ihtimali y\u00fckseliyor."
+            )
+
+    # ========== GOL ANAL\u0130Z\u0130 (2.5 \u00dcST/ALT) ==========
+    gp = []
+    if has_data:
+        combined = home_stats["avg_gf"] + away_stats["avg_gf"]
+        avg_o25 = (home_stats["over25_pct"] + away_stats["over25_pct"]) / 2
+        gp.append(
+            f"{hn} ma\u00e7 ba\u015f\u0131na ort. {f(home_stats['avg_gf'])} gol at\u0131yor, "
+            f"{f(home_stats['avg_ga'])} gol yiyor. "
+            f"{an} ort. {f(away_stats['avg_gf'])} gol at\u0131yor, "
+            f"{f(away_stats['avg_ga'])} gol yiyor."
+        )
+        gp.append(
+            f"2.5 \u00dcst ger\u00e7ekle\u015fme: {hn} %{home_stats['over25_pct']}, "
+            f"{an} %{away_stats['over25_pct']}."
+        )
+        if h2h_stats and h2h_stats["played"] >= 3:
+            gp.append(
+                f"Kar\u015f\u0131l\u0131kl\u0131 ma\u00e7larda ort. {f(h2h_stats['avg_goals'])} gol, "
+                f"2.5 \u00dcst oran\u0131: %{h2h_stats['over25_pct']}."
+            )
+        if avg_o25 >= 65:
+            gp.append(
+                "2.5 \u00dcst taraf\u0131 daha olas\u0131 duruyor. "
+                "Her iki tak\u0131m\u0131n ma\u00e7lar\u0131 da goll\u00fc ge\u00e7iyor."
+            )
+        elif avg_o25 >= 45:
+            gp.append(
+                "2.5 s\u0131n\u0131r\u0131nda bir ma\u00e7 bekleniyor. "
+                "Ma\u00e7\u0131n ak\u0131\u015f\u0131na g\u00f6re \u00fcst veya alt ger\u00e7ekle\u015febilir."
             )
         else:
-            senaryo = (
-                f"Benzer seviyelerdeki iki tak\u0131m aras\u0131nda dengeli bir ma\u00e7 \u00f6ng\u00f6r\u00fclebilir. "
-                f"Ev sahibi {home_name} k\u0131smi avantaja sahip olsa da, "
-                f"sonu\u00e7 a\u00e7\u0131k."
+            gp.append(
+                "D\u00fc\u015f\u00fck skorlu ma\u00e7 senaryosu daha yak\u0131n. "
+                "Her iki tak\u0131m\u0131n ma\u00e7lar\u0131 da az goll\u00fc ge\u00e7me e\u011filiminde."
             )
+        if combined > 3.0:
+            gp.append(f"Toplam gol ort. ({f(combined)}) y\u00fcksek. Goll\u00fc ma\u00e7 ihtimali g\u00fc\u00e7l\u00fc.")
+        elif combined < 2.0:
+            gp.append(f"Toplam gol ort. ({f(combined)}) d\u00fc\u015f\u00fck. K\u0131s\u0131r bir ma\u00e7 beklenebilir.")
+    else:
+        if h_str and a_str:
+            gp.append("\u0130ki g\u00fc\u00e7l\u00fc tak\u0131m aras\u0131nda temkinli ba\u015flang\u0131\u00e7 olur. 2.5 Alt ihtimali hafif \u00f6ne \u00e7\u0131k\u0131yor.")
+        elif tier == "top":
+            gp.append("\u00dcst d\u00fczey lig ma\u00e7lar\u0131nda gol ortalamalar\u0131 genelde y\u00fcksektir. 2.5 \u00dcst de\u011ferlendirilebilir.")
+        else:
+            gp.append("Detayl\u0131 istatistik mevcut de\u011fil. Ma\u00e7\u0131n ba\u011flam\u0131na g\u00f6re de\u011ferlendirilmeli.")
+    if two_leg:
+        if two_leg["away_leads"] or two_leg["home_leads"]:
+            gp.append(
+                "Geride olan tak\u0131m\u0131n a\u00e7\u0131lma zorunlulu\u011fu "
+                "ma\u00e7\u0131n temposunu y\u00fckseltebilir. \u00dcst ihtimali artabilir."
+            )
+        elif two_leg["tied"]:
+            gp.append("Toplam skor e\u015fit. \u0130ki tak\u0131m da avantaj isteyecek, gol say\u0131s\u0131 artabilir.")
 
-    # --- Alternatif Senaryo ---
-    if is_finished and has_score:
-        goal_total = home_score + away_score
-        if goal_total >= 3:
-            alternatif = (
-                f"Toplam {goal_total} gol at\u0131lan ma\u00e7ta hareketli bir futbol izlendi. "
-                f"Her iki tak\u0131m\u0131n da gol aray\u0131\u015f\u0131nda oldu\u011fu a\u00e7\u0131k bir kar\u015f\u0131la\u015fmayd\u0131."
+    # ========== MA\u00c7 SONUCU E\u011e\u0130L\u0130M\u0130 ==========
+    mp = []
+    if done and has_sc:
+        if ft_h > ft_a:
+            mp.append(f"Ma\u00e7 {hn} galibiyetiyle sonu\u00e7land\u0131 ({ft_h}-{ft_a}).")
+        elif ft_a > ft_h:
+            mp.append(f"Ma\u00e7 {an} galibiyetiyle sonu\u00e7land\u0131 ({ft_a}-{ft_h} deplasman lehine).")
+        else:
+            mp.append(f"Ma\u00e7 {ft_h}-{ft_a} beraberlikle sona erdi.")
+    elif has_data:
+        h_wp = round(home_stats["wins"] / max(hp, 1) * 100)
+        a_wp = round(away_stats["wins"] / max(ap, 1) * 100)
+        mp.append(
+            f"{hn} galibiyet oran\u0131: %{h_wp} (son {hp} ma\u00e7). "
+            f"{an} galibiyet oran\u0131: %{a_wp} (son {ap} ma\u00e7)."
+        )
+        diff = (h_wp + 10) - a_wp
+        if diff > 25:
+            mp.append(
+                f"Ev sahibi {hn} bir ad\u0131m \u00f6nde. "
+                f"Form ve ev sahibi avantaj\u0131 {hn} lehine ciddi bir fark olu\u015fturuyor."
+            )
+        elif diff > 10:
+            mp.append(
+                f"{hn} ev sahibi avantaj\u0131yla hafif favori konumunda. "
+                "Ancak fark b\u00fcy\u00fck de\u011fil, beraberlik ihtimali g\u00f6z ard\u0131 edilmemeli."
+            )
+        elif diff > -10:
+            mp.append(
+                "Dengeli bir ma\u00e7 g\u00f6r\u00fcnt\u00fcs\u00fc var. "
+                "Beraberlik ihtimali en az di\u011fer sonu\u00e7lar kadar g\u00fc\u00e7l\u00fc duruyor."
+            )
+        elif diff > -25:
+            mp.append(
+                f"{an} formda ve deplasmanda bile hafif favori. "
+                f"Ancak ev sahibi avantaj\u0131 {hn}'yi dengeye getiriyor."
             )
         else:
-            alternatif = (
-                f"D\u00fc\u015f\u00fck skorlu bir ma\u00e7 ya\u015fand\u0131. "
-                f"Savunma odakl\u0131 yakla\u015f\u0131mlar\u0131n \u00f6ne \u00e7\u0131kt\u0131\u011f\u0131 bir kar\u015f\u0131la\u015fma oldu."
+            mp.append(
+                f"{an} a\u00e7\u0131k ara formda. "
+                f"Deplasman olmas\u0131na ra\u011fmen {an} galibiyeti daha olas\u0131."
             )
-    elif home_strong and away_strong:
-        alternatif = (
-            f"Her iki tak\u0131m\u0131n da gol buldu\u011fu a\u00e7\u0131k bir ma\u00e7 da de\u011ferlendirilebilir. "
-            f"Kaliteli oyuncular\u0131n bulundu\u011fu kar\u015f\u0131la\u015fmalarda "
-            f"y\u00fcksek skorlu sonu\u00e7lar s\u0131kl\u0131kla g\u00f6r\u00fclebilir."
-        )
-    elif home_strong or away_strong:
-        favored = home_name if home_strong else away_name
-        underdog = away_name if home_strong else home_name
-        alternatif = (
-            f"{underdog} savunma odakl\u0131 bir stratejiyle s\u00fcrpriz yapabilir. "
-            f"Alt seviye tak\u0131mlar\u0131n disiplinli oyunuyla "
-            f"beraberlik elde etti\u011fi ma\u00e7lar az de\u011fildir."
-        )
+        if h2h_stats and h2h_stats["played"] >= 3:
+            hw, aw, dr = h2h_stats["home_wins"], h2h_stats["away_wins"], h2h_stats["draws"]
+            if hw > aw:
+                mp.append(f"Kar\u015f\u0131l\u0131kl\u0131 ge\u00e7mi\u015fte {hn} \u00fcst\u00fcn: {hw}G-{dr}B-{aw}M.")
+            elif aw > hw:
+                mp.append(f"Kar\u015f\u0131l\u0131kl\u0131 ge\u00e7mi\u015fte {an} \u00fcst\u00fcn: {aw}G-{dr}B-{hw}M.")
+            else:
+                mp.append(f"Kar\u015f\u0131l\u0131kl\u0131 ge\u00e7mi\u015f dengeli: {hw}-{dr}-{aw}.")
     else:
-        alternatif = (
-            f"G\u00f6l\u00fc az bir ma\u00e7 ihtimali de g\u00f6z \u00f6n\u00fcnde bulundurulmal\u0131. "
-            f"Her iki tak\u0131m da temkinli ba\u015flayabilir ve "
-            f"ilk yar\u0131 skorsuz ge\u00e7ebilir."
-        )
+        if h_str and not a_str:
+            mp.append(f"{hn} galibiyeti \u00f6ne \u00e7\u0131kan ihtimal. Ev sahibi avantaj\u0131 ve kadro kalitesi belirleyici.")
+        elif a_str and not h_str:
+            mp.append(f"{an} deplasmanda da favori ancak ev sahibi s\u00fcrprizi m\u00fcmk\u00fcn.")
+        elif h_str and a_str:
+            mp.append("Dengeli e\u015fle\u015fme. Ev sahibi avantaj\u0131 k\u00fc\u00e7\u00fck fark yaratabilir, beraberlik de g\u00fc\u00e7l\u00fc ihtimal.")
+        else:
+            mp.append(f"Ev sahibi avantaj\u0131 {hn} lehine k\u0131smi bir fark yaratabilir. Sonu\u00e7 a\u00e7\u0131k.")
+    if two_leg:
+        if two_leg["home_leads"]:
+            mp.append(
+                f"{hn} toplamda \u00f6nde, defansif oynayabilir. "
+                f"D\u00fc\u015f\u00fck skorlu ma\u00e7 veya {an} galibiyeti ihtimali artabilir."
+            )
+        elif two_leg["away_leads"]:
+            mp.append(
+                f"{hn} a\u00e7\u0131lmak zorunda. "
+                f"Ma\u00e7\u0131n a\u00e7\u0131k ge\u00e7mesi beklenir, ev sahibi galibiyeti daha olas\u0131 "
+                f"ama {an} kontr atakla da skorla d\u00f6nebilir."
+            )
 
-    # --- Risk Notu ---
-    risk_factors = []
-
-    if comp_tier == "top" and home_strong and away_strong:
-        risk_factors.append(
-            "\u00dcst d\u00fczey kar\u015f\u0131la\u015fmalarda skor tahminleri zorla\u015f\u0131r"
-        )
-    if away_strong and not home_strong:
-        risk_factors.append(
-            f"{away_name} deplasmanda zorlanabilir, ev sahibi s\u00fcrpriz yapabilir"
-        )
-    if home_strong and not away_strong:
-        risk_factors.append(
-            f"{home_name} motivasyon eksikli\u011fi ya\u015fayabilir"
-        )
-    if "champions league" in (comp.get("name") or "").lower():
-        risk_factors.append(
-            "Avrupa kupalar\u0131nda beklenmedik sonu\u00e7lar s\u0131k g\u00f6r\u00fcl\u00fcr"
-        )
-    if "libertadores" in (comp.get("name") or "").lower():
-        risk_factors.append(
-            "G\u00fcney Amerika kupalar\u0131nda deplasman ma\u00e7lar\u0131 olduk\u00e7a zorludur"
-        )
-    if not home_strong and not away_strong:
-        risk_factors.append(
-            "Her iki tak\u0131m\u0131n da formu net de\u011fil, s\u00fcrpriz sonu\u00e7lar olas\u0131"
-        )
-
-    if is_finished:
-        risk = "Ma\u00e7 sona erdi. Analiz geriye d\u00f6n\u00fck de\u011ferlendirme i\u00e7indir."
-    elif is_live:
-        risk = "Ma\u00e7 devam ediyor. Canl\u0131 skor durumu de\u011fi\u015fiklik g\u00f6sterebilir."
-    elif risk_factors:
-        risk = ". ".join(risk_factors) + ". Bu fakt\u00f6rler g\u00f6z \u00f6n\u00fcnde bulundurulmal\u0131d\u0131r."
+    # ========== R\u0130SK NOTU ==========
+    rp = []
+    if done:
+        rp.append("Ma\u00e7 sona erdi. Bu analiz geriye d\u00f6n\u00fck de\u011ferlendirme i\u00e7indir.")
+    elif live:
+        rp.append("Ma\u00e7 devam ediyor. Canl\u0131 skor durumu anl\u0131k de\u011fi\u015febilir.")
     else:
-        risk = (
-            "Her ma\u00e7 farkl\u0131 dinamiklere sahiptir. "
-            "Sakatl\u0131klar, hava ko\u015fullar\u0131 ve motivasyon gibi fakt\u00f6rler "
-            "sonu\u00e7lar\u0131 etkileyebilir."
-        )
+        if has_data:
+            hf5 = home_stats["form_str"][:5]
+            af5 = away_stats["form_str"][:5]
+            if hf5.count("G") <= 1 and hf5.count("M") >= 2:
+                rp.append(f"{hn} son d\u00f6nemde tutars\u0131z performans sergiliyor. S\u00fcrpriz sonu\u00e7lar olas\u0131.")
+            if af5.count("G") <= 1 and af5.count("M") >= 2:
+                rp.append(f"{an} son d\u00f6nemde istikrars\u0131z. Beklenmedik sonu\u00e7lar \u00e7\u0131kabilir.")
+            if home_stats["draws"] >= hp * 0.4:
+                rp.append(f"{hn} s\u0131k berabere kal\u0131yor (son {hp} ma\u00e7ta {home_stats['draws']} beraberlik).")
+            if away_stats["draws"] >= ap * 0.4:
+                rp.append(f"{an} s\u0131k berabere kal\u0131yor (son {ap} ma\u00e7ta {away_stats['draws']} beraberlik).")
+        cl = cn.lower()
+        if "champions league" in cl or "europa" in cl:
+            rp.append("Avrupa kupalar\u0131nda beklenmedik sonu\u00e7lar s\u0131kl\u0131kla g\u00f6r\u00fcl\u00fcr. Motivasyon ve taktik de\u011fi\u015fiklikler belirleyici olabilir.")
+        if "libertadores" in cl:
+            rp.append("G\u00fcney Amerika kupalar\u0131nda deplasman ma\u00e7lar\u0131 son derece zorludur.")
+        if tier == "top" and h_str and a_str:
+            rp.append("\u00dcst d\u00fczey e\u015fle\u015fmelerde k\u00fc\u00e7\u00fck detaylar b\u00fcy\u00fck fark yarat\u0131r. K\u0131rm\u0131z\u0131 kart, penalt\u0131 gibi anl\u0131k olaylar sonucu de\u011fi\u015ftirebilir.")
+        if two_leg:
+            rp.append(
+                "\u0130ki ayakl\u0131 e\u015fle\u015fmelerde toplamda \u00f6nde olan tak\u0131m tempoya h\u00fckmedebilir, "
+                "bu da beklenen ma\u00e7 ak\u0131\u015f\u0131n\u0131 de\u011fi\u015ftirir."
+            )
+        if not rp:
+            rp.append(
+                "Her ma\u00e7 farkl\u0131 dinamiklere sahiptir. "
+                "Sakatl\u0131klar, hava ko\u015fullar\u0131, hakem fakt\u00f6r\u00fc ve motivasyon gibi "
+                "\u00f6ng\u00f6r\u00fclemeyen de\u011fi\u015fkenler sonu\u00e7lar\u0131 etkileyebilir."
+            )
 
     return {
-        "mac_ozeti": ozet,
-        "one_cikan_senaryo": senaryo,
-        "alternatif_senaryo": alternatif,
-        "risk_notu": risk,
+        "mac_ozeti": " ".join(oz),
+        "kg_analizi": " ".join(kp),
+        "gol_analizi": " ".join(gp),
+        "ms_egilimi": " ".join(mp),
+        "risk_notu": " ".join(rp),
     }
 
 
 @app.get("/api/match/{match_id}/analysis")
 async def get_match_analysis(match_id: int):
+    cached_analysis = cache_get(f"analysis_{match_id}")
+    if cached_analysis:
+        return cached_analysis
+
     headers = get_headers()
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{FOOTBALL_API_BASE}/matches/{match_id}",
-                headers=headers,
-                timeout=15.0
-            )
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verisi al\u0131namad\u0131.")
-            match_data = resp.json()
-            return generate_analysis(match_data)
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
+
+    match_data = cache_get(f"match_{match_id}")
+    if not match_data:
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(
+                    f"{FOOTBALL_API_BASE}/matches/{match_id}",
+                    headers=headers,
+                    timeout=15.0,
+                )
+                if resp.status_code == 429:
+                    raise HTTPException(status_code=429, detail="API istek limiti a\u015f\u0131ld\u0131. L\u00fctfen birka\u00e7 saniye bekleyip tekrar deneyin.")
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verisi al\u0131namad\u0131.")
+                match_data = resp.json()
+                cache_set(f"match_{match_id}", match_data)
+            except httpx.TimeoutException:
+                raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
+
+    home_id = match_data.get("homeTeam", {}).get("id")
+    away_id = match_data.get("awayTeam", {}).get("id")
+
+    home_matches, away_matches, h2h_data = await asyncio.gather(
+        fetch_team_recent(home_id, headers),
+        fetch_team_recent(away_id, headers),
+        fetch_h2h(match_id, headers),
+    )
+
+    home_stats = calc_team_stats(home_id, home_matches) if home_matches else None
+    away_stats = calc_team_stats(away_id, away_matches) if away_matches else None
+    h2h_stats = calc_h2h_stats(home_id, h2h_data)
+    two_leg = detect_two_leg(match_data, h2h_data)
+
+    result = generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg)
+    cache_set(f"analysis_{match_id}", result)
+    return result
 
 
 @app.get("/api/health")
