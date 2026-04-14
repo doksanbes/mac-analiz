@@ -55,6 +55,34 @@ function InfoCard({ icon: Icon, label, value }) {
   )
 }
 
+const FORM_MAP = {
+  G: { bg: 'bg-emerald-500', label: 'Galibiyet' },
+  B: { bg: 'bg-amber-400', label: 'Beraberlik' },
+  M: { bg: 'bg-red-500', label: 'Ma\u011flubiyet' },
+}
+
+function FormDots({ form, testId }) {
+  if (!form) return null
+  return (
+    <div data-testid={testId} className="flex items-center gap-1.5 mt-1">
+      {form.split('').slice(0, 5).map((c, i) => {
+        const info = FORM_MAP[c]
+        if (!info) return null
+        return (
+          <div key={i} className="group relative">
+            <div
+              className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${info.bg} transition-transform group-hover:scale-125`}
+            />
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 rounded-md bg-zinc-800 border border-white/10 text-[10px] font-medium text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+              {info.label}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function AnalysisCard({ icon: Icon, title, content, accentColor, index }) {
   return (
     <div
@@ -212,6 +240,7 @@ export default function MatchDetail() {
   const [match, setMatch] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [formData, setFormData] = useState(null)
 
   useEffect(() => {
     if (!params.id) return
@@ -232,6 +261,20 @@ export default function MatchDetail() {
         setError(err.message || 'Veri al\u0131namad\u0131')
         setLoading(false)
       })
+  }, [params.id])
+
+  useEffect(() => {
+    if (!params.id) return
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    fetch(`${apiUrl}/api/match/${params.id}/analysis`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.home_form || data.away_form) {
+          setFormData({ home: data.home_form, away: data.away_form })
+        }
+      })
+      .catch(() => {})
   }, [params.id])
 
   if (loading) {
@@ -337,6 +380,7 @@ export default function MatchDetail() {
                 >
                   {match.homeTeam?.name || 'Ev Sahibi'}
                 </span>
+                <FormDots form={formData?.home} testId="home-form-dots" />
               </div>
 
               <div className="flex flex-col items-center gap-2 px-4 sm:px-8">
@@ -384,6 +428,7 @@ export default function MatchDetail() {
                 >
                   {match.awayTeam?.name || 'Deplasman'}
                 </span>
+                <FormDots form={formData?.away} testId="away-form-dots" />
               </div>
             </div>
           </div>

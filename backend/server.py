@@ -666,6 +666,8 @@ def generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg):
 
     return {
         "hizli_bakis": qk,
+        "home_form": home_stats["form_str"] if home_stats and home_stats["played"] > 0 else "",
+        "away_form": away_stats["form_str"] if away_stats and away_stats["played"] > 0 else "",
         "mac_ozeti": " ".join(oz),
         "kg_analizi": " ".join(kp),
         "gol_analizi": " ".join(gp),

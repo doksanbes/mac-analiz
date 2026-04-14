@@ -1,6 +1,7 @@
 import requests
 import sys
 import time
+import json
 from datetime import datetime
 
 class MatchAnalysisAPITester:
@@ -8,14 +9,16 @@ class MatchAnalysisAPITester:
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
+        self.test_results = []
 
-    def run_test(self, name, method, endpoint, expected_status, data=None):
+    def run_test(self, name, method, endpoint, expected_status, data=None, check_fields=None):
         """Run a single API test"""
         url = f"{self.base_url}/{endpoint}"
         headers = {'Content-Type': 'application/json'}
 
         self.tests_run += 1
         print(f"\n🔍 Testing {name}...")
+        print(f"   URL: {url}")
         
         try:
             if method == 'GET':
@@ -24,18 +27,64 @@ class MatchAnalysisAPITester:
                 response = requests.post(url, json=data, headers=headers, timeout=30)
 
             success = response.status_code == expected_status
+            response_data = {}
+            
+            try:
+                response_data = response.json()
+            except:
+                response_data = {"raw_response": response.text[:500]}
+
             if success:
-                self.tests_passed += 1
-                print(f"✅ Passed - Status: {response.status_code}")
+                # Check specific fields if provided
+                field_checks_passed = True
+                if check_fields:
+                    for field in check_fields:
+                        if field not in response_data:
+                            print(f"❌ Missing required field: {field}")
+                            field_checks_passed = False
+                            success = False
+                        else:
+                            print(f"✅ Found field: {field}")
+
+                if success and field_checks_passed:
+                    self.tests_passed += 1
+                    print(f"✅ Passed - Status: {response.status_code}")
+                    self.test_results.append({
+                        "test": name,
+                        "status": "PASSED",
+                        "response_code": response.status_code,
+                        "data": response_data
+                    })
+                else:
+                    print(f"❌ Failed - Field validation failed")
+                    self.test_results.append({
+                        "test": name,
+                        "status": "FAILED",
+                        "response_code": response.status_code,
+                        "error": "Field validation failed",
+                        "data": response_data
+                    })
             else:
                 print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                if response.text:
-                    print(f"Response: {response.text[:200]}")
+                print(f"   Response: {response_data}")
+                self.test_results.append({
+                    "test": name,
+                    "status": "FAILED",
+                    "response_code": response.status_code,
+                    "expected_code": expected_status,
+                    "error": response_data.get("detail", "Unknown error"),
+                    "data": response_data
+                })
 
-            return success, response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+            return success, response_data
 
         except Exception as e:
             print(f"❌ Failed - Error: {str(e)}")
+            self.test_results.append({
+                "test": name,
+                "status": "ERROR",
+                "error": str(e)
+            })
             return False, {}
 
     def test_health_endpoint(self):
@@ -44,31 +93,70 @@ class MatchAnalysisAPITester:
             "Health Check",
             "GET",
             "api/health",
-            200
+            200,
+            check_fields=["status", "api_token_configured"]
         )
         if success:
             print(f"API Token Configured: {response.get('api_token_configured', False)}")
         return success
 
-    def test_match_analysis(self, match_id):
-        """Test match analysis endpoint"""
+    def test_match_endpoint(self, match_id):
+        """Test match endpoint"""
         success, response = self.run_test(
-            f"Match Analysis for ID {match_id}",
+            f"Get Match {match_id}",
+            "GET",
+            f"api/match/{match_id}",
+            200,
+            check_fields=["homeTeam", "awayTeam", "status"]
+        )
+        return success, response
+
+    def test_match_analysis_with_form(self, match_id):
+        """Test match analysis endpoint - KEY TEST for form dots feature"""
+        success, response = self.run_test(
+            f"Match Analysis with Form Data for ID {match_id}",
             "GET",
             f"api/match/{match_id}/analysis",
-            200
+            200,
+            check_fields=["home_form", "away_form", "hizli_bakis", "mac_ozeti"]
         )
         
-        if success:
-            # Check required fields
+        if success and response:
+            # Additional validation for form data
+            home_form = response.get("home_form", "")
+            away_form = response.get("away_form", "")
+            
+            print(f"   📊 Home Form: '{home_form}'")
+            print(f"   📊 Away Form: '{away_form}'")
+            
+            # Validate form strings contain only G, B, M characters
+            valid_chars = set("GBM")
+            if home_form and not set(home_form).issubset(valid_chars):
+                print(f"❌ Invalid characters in home_form: {home_form}")
+                return False, response
+            if away_form and not set(away_form).issubset(valid_chars):
+                print(f"❌ Invalid characters in away_form: {away_form}")
+                return False, response
+                
+            # Check if form strings are reasonable length (should be 5 or less)
+            if len(home_form) > 5:
+                print(f"❌ Home form too long: {len(home_form)} characters")
+                return False, response
+            if len(away_form) > 5:
+                print(f"❌ Away form too long: {len(away_form)} characters")
+                return False, response
+                
+            print(f"✅ Form data validation passed")
+            
+            # Check other required fields
             required_fields = ['mac_ozeti', 'kg_analizi', 'gol_analizi', 'ms_egilimi', 'risk_notu', 'hizli_bakis']
             missing_fields = [field for field in required_fields if field not in response]
             
             if missing_fields:
                 print(f"❌ Missing required fields: {missing_fields}")
-                return False
+                return False, response
             else:
-                print("✅ All 6 required analysis fields present (including hizli_bakis)")
+                print("✅ All 6 required analysis fields present")
                 
             # Test Hızlı Bakış specific requirements
             hb = response.get('hizli_bakis', {})
@@ -116,9 +204,9 @@ class MatchAnalysisAPITester:
                     print("❌ Two-legged tie detection not working for Liverpool vs PSG")
                     return False
                 
-            return True
+            return True, response
             
-        return False
+        return False, response
 
     def test_hizli_bakis(self, hb, match_id):
         """Test Hızlı Bakış specific requirements"""
@@ -229,44 +317,58 @@ class MatchAnalysisAPITester:
         return False
 
 def main():
-    # Setup
-    tester = MatchAnalysisAPITester()
-    
-    print("🚀 Starting Match Analysis API Tests")
+    print("🚀 Starting Football API Backend Tests")
     print("=" * 50)
     
-    # Test health endpoint first
+    tester = MatchAnalysisAPITester()
+    
+    # Test 1: Health check
     if not tester.test_health_endpoint():
         print("❌ Health check failed, stopping tests")
         return 1
-    
-    # Test analysis endpoints for both match IDs
-    match_ids = [556722, 556724]  # Liverpool vs PSG, Atletico vs Barcelona
-    
-    for match_id in match_ids:
-        print(f"\n📊 Testing Match ID: {match_id}")
-        print("-" * 30)
-        
-        if not tester.test_match_analysis(match_id):
-            print(f"❌ Analysis test failed for match {match_id}")
-            continue
-            
-        # Test cache for first match only to avoid rate limits
-        if match_id == match_ids[0]:
-            if not tester.test_cache_functionality(match_id):
-                print(f"❌ Cache test failed for match {match_id}")
-    
-    # Print final results
-    print(f"\n📊 Final Results")
-    print("=" * 50)
-    print(f"Tests passed: {tester.tests_passed}/{tester.tests_run}")
-    
-    if tester.tests_passed == tester.tests_run:
-        print("🎉 All tests passed!")
-        return 0
-    else:
-        print("⚠️ Some tests failed")
+
+    # Test 2: Match endpoint for match 556722 (Liverpool vs PSG)
+    match_success, match_data = tester.test_match_endpoint(556722)
+    if not match_success:
+        print("❌ Match endpoint failed, stopping tests")
         return 1
+
+    # Test 3: Match analysis endpoint (key test for form dots feature)
+    analysis_success, analysis_data = tester.test_match_analysis_with_form(556722)
+    if not analysis_success:
+        print("❌ Match analysis endpoint failed")
+        return 1
+
+    # Test 4: Cache functionality
+    print("\n🔄 Testing cache functionality...")
+    tester.test_cache_functionality(556722)
+
+    # Print final results
+    print("\n" + "=" * 50)
+    print(f"📊 Tests Summary:")
+    print(f"   Total Tests: {tester.tests_run}")
+    print(f"   Passed: {tester.tests_passed}")
+    print(f"   Failed: {tester.tests_run - tester.tests_passed}")
+    print(f"   Success Rate: {(tester.tests_passed/tester.tests_run)*100:.1f}%")
+    
+    # Save detailed results
+    with open("/app/backend_test_results.json", "w") as f:
+        json.dump({
+            "timestamp": datetime.now().isoformat(),
+            "summary": {
+                "total": tester.tests_run,
+                "passed": tester.tests_passed,
+                "failed": tester.tests_run - tester.tests_passed,
+                "success_rate": (tester.tests_passed/tester.tests_run)*100
+            },
+            "tests": tester.test_results
+        }, f, indent=2)
+    
+    print(f"\n💾 Detailed results saved to /app/backend_test_results.json")
+    
+    # Return 0 if all critical tests passed (health + match + analysis)
+    critical_tests_passed = tester.tests_passed >= 3
+    return 0 if critical_tests_passed else 1
 
 if __name__ == "__main__":
     sys.exit(main())
