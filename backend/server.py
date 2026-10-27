@@ -6,10 +6,41 @@ import os
 import asyncio
 import time
 from pathlib import Path
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 
 load_dotenv(Path(__file__).with_name('.env'), override=False)
 
-app = FastAPI()
+def bounded_int_setting(name, default, maximum):
+    value = int(os.environ.get(name, str(default)))
+    if not 1 <= value <= maximum:
+        raise ValueError(f'{name} must be between 1 and {maximum}')
+    return value
+
+
+PROVIDER_MAX_CONCURRENCY = bounded_int_setting('PROVIDER_MAX_CONCURRENCY', 4, 32)
+PROVIDER_QUEUE_TIMEOUT = float(os.environ.get('PROVIDER_QUEUE_TIMEOUT', '2'))
+if not 0 < PROVIDER_QUEUE_TIMEOUT <= 30:
+    raise ValueError('PROVIDER_QUEUE_TIMEOUT must be greater than 0 and at most 30 seconds')
+CACHE_MAX_ENTRIES = bounded_int_setting('CACHE_MAX_ENTRIES', 256, 4096)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Lifespan ownership avoids sharing loop-bound resources between app runs.
+    limits = httpx.Limits(max_connections=PROVIDER_MAX_CONCURRENCY,
+                         max_keepalive_connections=PROVIDER_MAX_CONCURRENCY)
+    async with httpx.AsyncClient(limits=limits) as client:
+        app.state.provider_client = client
+        app.state.provider_slots = asyncio.Semaphore(PROVIDER_MAX_CONCURRENCY)
+        try:
+            yield
+        finally:
+            del app.state.provider_client
+            del app.state.provider_slots
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,19 +54,30 @@ app.add_middleware(
 
 FOOTBALL_API_BASE = "https://api.football-data.org/v4"
 
-_cache = {}
+_cache = OrderedDict()
 CACHE_TTL = 120
 
 
 def cache_get(key):
     entry = _cache.get(key)
-    if entry and time.time() - entry["t"] < CACHE_TTL:
-        return entry["d"]
-    return None
+    if entry is None:
+        return None
+    if time.monotonic() - entry['t'] >= CACHE_TTL:
+        del _cache[key]
+        return None
+    _cache.move_to_end(key)
+    return entry['d']
 
 
 def cache_set(key, data):
-    _cache[key] = {"d": data, "t": time.time()}
+    now = time.monotonic()
+    expired = [name for name, entry in _cache.items() if now - entry['t'] >= CACHE_TTL]
+    for name in expired:
+        del _cache[name]
+    _cache[key] = {'d': data, 't': now}
+    _cache.move_to_end(key)
+    while len(_cache) > CACHE_MAX_ENTRIES:
+        _cache.popitem(last=False)
 
 
 def get_headers():
@@ -50,23 +92,30 @@ def get_headers():
 
 async def fetch_provider_object(path, headers, *, params=None, timeout=15.0):
     """Read a provider object without exposing its body, token or transport details."""
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(FOOTBALL_API_BASE + path, headers=headers, params=params, timeout=timeout)
-            if response.status_code == 403:
-                raise HTTPException(status_code=403, detail="API anahtarı geçersiz veya yetkisiz.")
-            if response.status_code == 429:
-                raise HTTPException(status_code=429, detail="API istek limiti aşıldı. Lütfen daha sonra tekrar deneyin.")
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Maç verileri alınamadı.")
-            data = response.json()
-            if not isinstance(data, dict):
-                raise ValueError('Expected a provider object')
-            return data
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="API isteği zaman aşımına uğradı.") from None
-        except (httpx.RequestError, ValueError):
-            raise HTTPException(status_code=502, detail="Veri sağlayıcıdan geçerli bir yanıt alınamadı. Tekrar deneyin.") from None
+    client = app.state.provider_client
+    slots = app.state.provider_slots
+    try:
+        await asyncio.wait_for(slots.acquire(), timeout=PROVIDER_QUEUE_TIMEOUT)
+    except TimeoutError:
+        raise HTTPException(status_code=503, detail="Veri sağlayıcı şu anda yoğun. Lütfen daha sonra tekrar deneyin.") from None
+    try:
+        response = await client.get(FOOTBALL_API_BASE + path, headers=headers, params=params, timeout=timeout)
+        if response.status_code == 403:
+            raise HTTPException(status_code=403, detail="API anahtarı geçersiz veya yetkisiz.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=429, detail="API istek limiti aşıldı. Lütfen daha sonra tekrar deneyin.")
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Maç verileri alınamadı.")
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError('Expected a provider object')
+        return data
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="API isteği zaman aşımına uğradı.") from None
+    except (httpx.RequestError, ValueError):
+        raise HTTPException(status_code=502, detail="Veri sağlayıcıdan geçerli bir yanıt alınamadı. Tekrar deneyin.") from None
+    finally:
+        slots.release()
 
 
 @app.get("/api/matches")

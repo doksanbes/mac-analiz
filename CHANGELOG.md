@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Bound per-worker active provider requests with a shared lifespan-owned HTTP client and timed semaphore admission; preserve partial-data behavior under overload and release capacity after errors/cancellation.
+- Bound cache entries with LRU eviction and monotonic TTL, deleting expired entries on reads/writes while retaining valid empty results and recovery behavior.
+
 - Show unavailable optional analysis sources and allow partial analysis/form results to recover on a later request instead of caching the degraded aggregate. Keep valid empty histories distinct from provider failures.
 - Correct documentation to reflect the merged source candidate, successful post-merge CI and actual workflow triggers.
 

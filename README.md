@@ -76,10 +76,13 @@ For a local production check, run `npm run build` then `npm start` from `fronten
 | --- | --- |
 | `FOOTBALL_DATA_API_TOKEN` | Backend-only key; environment or `backend/.env`; existing environment wins |
 | `ALLOWED_ORIGINS` | Direct-browser backend access; comma-separated origins; defaults to localhost/127.0.0.1 on port 3000; no cookie credentials |
+| `PROVIDER_MAX_CONCURRENCY` | Maximum active provider calls per backend worker; integer 1–32, default 4 |
+| `PROVIDER_QUEUE_TIMEOUT` | Seconds to wait for a provider slot; greater than 0 and at most 30, default 2 |
+| `CACHE_MAX_ENTRIES` | Per-worker cache entry cap; integer 1–4096, default 256 |
 | `BACKEND_URL` | Server-only Next.js proxy target; defaults to `http://127.0.0.1:8001`; no embedded credentials/query/fragment; rebuild after changing |
 | `NEXT_PUBLIC_BACKEND_URL` | Optional public browser override; leave blank for proxy; embedded at build time; never a secret |
 
-Examples in each service's `.env.example` contain no working keys.
+Examples in each service's `.env.example` contain no working keys. Restart the backend after changing load-control settings; invalid limits fail at startup.
 
 ## Endpoints
 
@@ -97,6 +100,6 @@ Form retrieval now shares match-list error handling: rate limits return 429, tim
 
 Football data provided by the [Football-Data.org API](https://www.football-data.org/). Live operation requires your own registered, application-scoped key and a plan covering the endpoints you use. Follow the [provider terms](https://www.football-data.org/about), rate/fair-use limits and attribution requirement. Provider responses are not MIT-licensed or an open dataset. The terms restrict referencing obtained data after subscription cancellation and require graphics-owner permission for logos/photos. Do not commit keys, cache dumps or live response fixtures. Unverified images/fonts, crests, generated builds and captured reports are excluded from this source candidate. The UI uses names, local CSS and system fonts.
 
-Analysis uses deterministic rules, not validated predictions. If recent-team or head-to-head requests fail, the detail page identifies the unavailable sources while keeping usable analysis visible. The API adds `data_warnings` codes (`home_recent`, `away_recent`, `head_to_head`); successful empty histories are not failures. Partial analysis/form results are not cached, so a later reload can recover; successful source responses still use the 120-second cache. There is no automatic retry or rate-limit backoff. Bounded request concurrency/cache size, deeper provider schemas and full accessibility review remain future work. No adoption or accuracy claims are made.
+Analysis uses deterministic rules, not validated predictions. If recent-team or head-to-head requests fail, the detail page identifies the unavailable sources while keeping usable analysis visible. The API adds `data_warnings` codes (`home_recent`, `away_recent`, `head_to_head`); successful empty histories are not failures. Partial analysis/form results are not cached, so a later reload can recover; successful source responses still use the 120-second cache. A lifespan-owned HTTP client and semaphore cap active provider calls per worker. Waiting longer than the configured queue timeout returns 503 for primary data or existing missing-source warnings for optional analysis data. Permits are released on failure/cancellation. The in-memory cache retains its 120-second TTL, uses monotonic time, removes expired entries on reads/writes and evicts the least recently used entry at capacity. There is no automatic retry, requests-per-minute limiter, rate-limit backoff or cross-worker coordination. Entry count is bounded, not response bytes or total incoming tasks. Deeper provider schemas, homepage availability messaging and full accessibility review remain future work. No adoption or accuracy claims are made.
 
 See [the release plan](docs/release-plan.md). New changes may be reviewed through PRs; merge, tag, release and deployment require their own approval. CI has no publish job.
