@@ -5,16 +5,19 @@ import httpx
 import os
 import asyncio
 import time
+from pathlib import Path
 
-load_dotenv()
+load_dotenv(Path(__file__).with_name('.env'), override=False)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=[origin.strip() for origin in os.environ.get(
+        'ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',') if origin.strip()],
+    allow_credentials=False,
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
@@ -45,28 +48,37 @@ def get_headers():
     return {"X-Auth-Token": token}
 
 
+async def fetch_provider_object(path, headers):
+    """Read a provider object without exposing its body, token or transport details."""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(FOOTBALL_API_BASE + path, headers=headers, timeout=15.0)
+            if response.status_code == 403:
+                raise HTTPException(status_code=403, detail="API anahtarı geçersiz veya yetkisiz.")
+            if response.status_code == 429:
+                raise HTTPException(status_code=429, detail="API istek limiti aşıldı. Lütfen daha sonra tekrar deneyin.")
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Maç verileri alınamadı.")
+            data = response.json()
+            if not isinstance(data, dict):
+                raise ValueError('Expected a provider object')
+            return data
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="API isteği zaman aşımına uğradı.") from None
+        except (httpx.RequestError, ValueError):
+            raise HTTPException(status_code=502, detail="Veri sağlayıcıdan geçerli bir yanıt alınamadı. Tekrar deneyin.") from None
+
+
 @app.get("/api/matches")
 async def get_matches():
     cached = cache_get("matches_list")
     if cached:
         return cached
-    headers = get_headers()
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{FOOTBALL_API_BASE}/matches",
-                headers=headers,
-                timeout=15.0
-            )
-            if resp.status_code == 403:
-                raise HTTPException(status_code=403, detail="API anahtar\u0131 ge\u00e7ersiz veya yetkisiz.")
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verileri al\u0131namad\u0131.")
-            data = resp.json()
-            cache_set("matches_list", data)
-            return data
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
+    data = await fetch_provider_object('/matches', get_headers())
+    if not isinstance(data.get('matches'), list):
+        raise HTTPException(status_code=502, detail="Veri sağlayıcıdan geçerli bir maç listesi alınamadı. Tekrar deneyin.")
+    cache_set("matches_list", data)
+    return data
 
 
 @app.get("/api/match/{match_id}")
@@ -74,23 +86,9 @@ async def get_match(match_id: int):
     cached = cache_get(f"match_{match_id}")
     if cached:
         return cached
-    headers = get_headers()
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{FOOTBALL_API_BASE}/matches/{match_id}",
-                headers=headers,
-                timeout=15.0
-            )
-            if resp.status_code == 403:
-                raise HTTPException(status_code=403, detail="API anahtar\u0131 ge\u00e7ersiz veya yetkisiz.")
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verisi al\u0131namad\u0131.")
-            data = resp.json()
-            cache_set(f"match_{match_id}", data)
-            return data
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
+    data = await fetch_provider_object(f'/matches/{match_id}', get_headers())
+    cache_set(f"match_{match_id}", data)
+    return data
 
 
 STRONG_CLUBS = {
@@ -689,23 +687,7 @@ async def get_match_analysis(match_id: int):
 
     headers = get_headers()
 
-    match_data = cache_get(f"match_{match_id}")
-    if not match_data:
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.get(
-                    f"{FOOTBALL_API_BASE}/matches/{match_id}",
-                    headers=headers,
-                    timeout=15.0,
-                )
-                if resp.status_code == 429:
-                    raise HTTPException(status_code=429, detail="API istek limiti a\u015f\u0131ld\u0131. L\u00fctfen birka\u00e7 saniye bekleyip tekrar deneyin.")
-                if resp.status_code != 200:
-                    raise HTTPException(status_code=resp.status_code, detail="Ma\u00e7 verisi al\u0131namad\u0131.")
-                match_data = resp.json()
-                cache_set(f"match_{match_id}", match_data)
-            except httpx.TimeoutException:
-                raise HTTPException(status_code=504, detail="API iste\u011fi zaman a\u015f\u0131m\u0131na u\u011frad\u0131.")
+    match_data = await get_match(match_id)
 
     home_id = match_data.get("homeTeam", {}).get("id")
     away_id = match_data.get("awayTeam", {}).get("id")
@@ -731,19 +713,8 @@ async def get_matches_form():
     cached = cache_get("all_form")
     if cached is not None:
         return cached
+    matches_data = await get_matches()
     headers = get_headers()
-    matches_data = cache_get("matches_list")
-    if not matches_data:
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.get(f"{FOOTBALL_API_BASE}/matches", headers=headers, timeout=15.0)
-                if resp.status_code == 200:
-                    matches_data = resp.json()
-                    cache_set("matches_list", matches_data)
-            except Exception:
-                pass
-    if not matches_data:
-        return {}
     matches = matches_data.get("matches", [])
     team_ids = set()
     for m in matches:

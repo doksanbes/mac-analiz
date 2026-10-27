@@ -1,0 +1,5 @@
+# Runtime dependencies. Compile requirements.txt with pip-tools; review upgrades.
+fastapi>=0.115,<1
+uvicorn>=0.29,<1
+httpx>=0.28,<1
+python-dotenv>=1.1,<2

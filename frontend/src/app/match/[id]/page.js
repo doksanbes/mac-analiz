@@ -360,9 +360,7 @@ export default function MatchDetail() {
       <section className="relative py-12 sm:py-20">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage: "url('https://images.pexels.com/photos/3991976/pexels-photo-3991976.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940')"
-          }}
+          style={{ backgroundImage: "radial-gradient(ellipse at top, #064e3b 0%, #0a0a0a 75%)" }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/80 to-surface-base" />
 
@@ -377,9 +375,7 @@ export default function MatchDetail() {
           </Link>
 
           <div className="flex items-center gap-2 mb-6">
-            {match.competition?.emblem && (
-              <img src={match.competition.emblem} alt="" className="w-6 h-6 object-contain" />
-            )}
+
             <span className="text-sm font-bold uppercase tracking-[0.15em] text-zinc-400">
               {match.competition?.name || 'Bilinmeyen Lig'}
             </span>
@@ -391,9 +387,7 @@ export default function MatchDetail() {
           >
             <div className="flex items-center justify-between gap-4">
               <div className="flex-1 flex flex-col items-center gap-3 text-center">
-                {match.homeTeam?.crest && (
-                  <img src={match.homeTeam.crest} alt="" className="w-14 h-14 sm:w-20 sm:h-20 object-contain" />
-                )}
+
                 <span
                   data-testid="home-team-name"
                   className="text-base sm:text-lg font-bold text-white font-outfit"
@@ -439,9 +433,7 @@ export default function MatchDetail() {
               </div>
 
               <div className="flex-1 flex flex-col items-center gap-3 text-center">
-                {match.awayTeam?.crest && (
-                  <img src={match.awayTeam.crest} alt="" className="w-14 h-14 sm:w-20 sm:h-20 object-contain" />
-                )}
+
                 <span
                   data-testid="away-team-name"
                   className="text-base sm:text-lg font-bold text-white font-outfit"
