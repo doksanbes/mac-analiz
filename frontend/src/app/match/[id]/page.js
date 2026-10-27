@@ -157,6 +157,13 @@ function AnalysisSection({ matchId }) {
   if (!analysis) return null
 
   const hb = analysis.hizli_bakis
+  const sourceLabels = {
+    home_recent: 'Ev sahibinin son maçları',
+    away_recent: 'Deplasman takımının son maçları',
+    head_to_head: 'İki takımın geçmiş karşılaşmaları',
+  }
+  const missingSources = (Array.isArray(analysis.data_warnings) ? analysis.data_warnings : [])
+    .map(source => sourceLabels[source]).filter(Boolean)
 
   const riskColor = {
     'D\u00fc\u015f\u00fck': 'text-emerald-400',
@@ -175,6 +182,17 @@ function AnalysisSection({ matchId }) {
 
   return (
     <div data-testid="analysis-grid" className="flex flex-col gap-4">
+      {missingSources.length > 0 && (
+        <aside role="status" aria-label="Analiz veri durumu" data-testid="analysis-data-warning"
+          className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-amber-100">
+          <h3 className="font-semibold">Eksik veriyle analiz</h3>
+          <p className="mt-2 text-sm">Bazı verilere ulaşılamadı. Analiz mevcut bilgilerle oluşturuldu; eksik kaynaklar:</p>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            {missingSources.map(label => <li key={label}>{label}</li>)}
+          </ul>
+          <p className="mt-2 text-sm">Daha sonra sayfayı yenileyerek tekrar deneyebilirsiniz.</p>
+        </aside>
+      )}
       {hb && (
         <div
           data-testid="hizli-bakis"

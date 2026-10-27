@@ -48,11 +48,11 @@ def get_headers():
     return {"X-Auth-Token": token}
 
 
-async def fetch_provider_object(path, headers):
+async def fetch_provider_object(path, headers, *, params=None, timeout=15.0):
     """Read a provider object without exposing its body, token or transport details."""
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(FOOTBALL_API_BASE + path, headers=headers, timeout=15.0)
+            response = await client.get(FOOTBALL_API_BASE + path, headers=headers, params=params, timeout=timeout)
             if response.status_code == 403:
                 raise HTTPException(status_code=403, detail="API anahtarı geçersiz veya yetkisiz.")
             if response.status_code == 429:
@@ -137,46 +137,39 @@ def get_comp_tier(comp_name):
 
 async def fetch_team_recent(team_id, api_headers):
     if not team_id:
-        return []
+        return None
     cached = cache_get(f"team_{team_id}")
     if cached is not None:
         return cached
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{FOOTBALL_API_BASE}/teams/{team_id}/matches",
-                params={"status": "FINISHED", "limit": 15},
-                headers=api_headers,
-                timeout=10.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json().get("matches", [])
-                cache_set(f"team_{team_id}", data)
-                return data
-        except Exception:
-            pass
-    return []
+    try:
+        data = await fetch_provider_object(
+            f'/teams/{team_id}/matches', api_headers,
+            params={"status": "FINISHED", "limit": 15}, timeout=10.0,
+        )
+    except HTTPException:
+        return None
+    matches = data.get('matches')
+    if not isinstance(matches, list):
+        return None
+    cache_set(f"team_{team_id}", matches)
+    return matches
 
 
 async def fetch_h2h(match_id, api_headers):
     cached = cache_get(f"h2h_{match_id}")
     if cached is not None:
         return cached
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{FOOTBALL_API_BASE}/matches/{match_id}/head2head",
-                params={"limit": 10},
-                headers=api_headers,
-                timeout=10.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                cache_set(f"h2h_{match_id}", data)
-                return data
-        except Exception:
-            pass
-    return None
+    try:
+        data = await fetch_provider_object(
+            f'/matches/{match_id}/head2head', api_headers,
+            params={"limit": 10}, timeout=10.0,
+        )
+    except HTTPException:
+        return None
+    if not isinstance(data.get('matches'), list) or not isinstance(data.get('aggregates', {}), dict):
+        return None
+    cache_set(f"h2h_{match_id}", data)
+    return data
 
 
 def calc_team_stats(team_id, matches):
@@ -704,7 +697,14 @@ async def get_match_analysis(match_id: int):
     two_leg = detect_two_leg(match_data, h2h_data)
 
     result = generate_analysis(match_data, home_stats, away_stats, h2h_stats, two_leg)
-    cache_set(f"analysis_{match_id}", result)
+    # None means unavailable; an empty successful history is valid, not an outage.
+    result['data_warnings'] = [
+        source for source, data in (
+            ('home_recent', home_matches), ('away_recent', away_matches), ('head_to_head', h2h_data)
+        ) if data is None
+    ]
+    if not result['data_warnings']:
+        cache_set(f"analysis_{match_id}", result)
     return result
 
 
@@ -740,7 +740,8 @@ async def get_matches_form():
             "home_form": team_forms.get(hid, ""),
             "away_form": team_forms.get(aid, ""),
         }
-    cache_set("all_form", out)
+    if all(team_matches is not None for team_matches in results):
+        cache_set("all_form", out)
     return out
 
 

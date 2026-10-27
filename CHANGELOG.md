@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Show unavailable optional analysis sources and allow partial analysis/form results to recover on a later request instead of caching the degraded aggregate. Keep valid empty histories distinct from provider failures.
+- Correct documentation to reflect the merged source candidate, successful post-merge CI and actual workflow triggers.
+
 ## 0.1.0-rc.1 — Unreleased
 
 Initial source release candidate; not a claim of a previous public release.

@@ -22,10 +22,12 @@ Browser tests run the production frontend with invented API responses and block 
 
 Install tooling/browsers once with network access; test execution requires only loopback. Some Windows shell sandboxes block Python asyncio's socketpair. Run the mocked suite in a normal authorized terminal instead. Use a writable local TEMP/TMP if a sandbox prevents browser downloads; do not replace fixtures with a live service to work around it.
 
-## CI draft and limits
+## CI and limits
 
-Proposed CI tests Python on Windows/Linux and builds/tests the frontend on Linux. It uses pinned action revisions, read-only permissions, no secrets, and no publication job. It has not been pushed or run on GitHub. Runtime minor selections in CI float to security patches; dependency versions/hashes are locked.
+CI tests Python on Windows/Linux and builds/tests the frontend on Linux. It uses pinned action revisions, read-only permissions, no secrets, and no publication job. All three jobs passed on the [PR #1 merge commit](https://github.com/doksanbes/mac-analiz/actions/runs/40546110561). The workflow runs for pull requests, pushes to `main` and manual `workflow_dispatch`; a feature-branch push alone does not trigger it. Runtime minor selections in CI float to security patches; dependency versions/hashes are locked.
 
-Remaining work includes explicit optional-data warnings, bounded request concurrency/cache size, stronger provider schemas, and full manual accessibility review. No deployment or forecast-accuracy claim follows from fixture tests.
+The analysis API includes `data_warnings`, an ordered list of unavailable-source codes: `home_recent`, `away_recent`, `head_to_head`. The detail page renders their Turkish labels in a status message. A valid empty history has no warning. Optional failures return `None` internally rather than a successful empty list; malformed top-level optional payloads are unavailable. Primary-match failures still return errors. Only complete aggregate responses are cached; successful individual sources retain their normal cache. Failed optional requests can be attempted again on the next request, without automatic retries or backoff.
+
+Remaining work includes bounded request concurrency/cache size, deeper provider schemas, homepage form-availability messaging and full manual accessibility review. No deployment or forecast-accuracy claim follows from fixture tests.
 
 [Back to README](../README.md)
