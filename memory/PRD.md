@@ -16,7 +16,7 @@ Updated October 27, 2026 for the local `0.1.0-rc.1` source candidate. This repla
 - FastAPI / httpx backend on loopback port 8001, using football-data.org v4.
 - Frontend `/api` requests use the configured server-side Next proxy by default.
 - GET endpoints: `/api/health`, `/api/matches`, `/api/matches/form`, `/api/match/{id}`, `/api/match/{id}/analysis`.
-- Provider keys remain backend-only. Match data is cached in memory for 120 seconds.
+- Provider keys remain backend-only. Match data uses a bounded per-worker 120-second monotonic TTL/LRU cache; defaults are 256 entries and four active provider calls with a two-second slot wait.
 - Form-list primary failures return explicit errors; successful empty schedules remain successful empty results.
 
 ## Maintenance and boundaries
@@ -25,4 +25,4 @@ See the [README](../README.md) for reproducible setup and [development notes](..
 
 Original-code MIT scope, owner provenance declarations and residual uncertainty are recorded in [rights and assets](../docs/rights-and-assets.md). Dependency icons retain separate notices. Provider data and graphics are not MIT-licensed. No remote photos, fonts, logos, captured reports or compiled output belong in the source candidate.
 
-Analysis now identifies unavailable optional sources without discarding usable output, and partial results can recover on reload. Remaining work: bounded concurrency/cache growth, deeper match schemas, homepage form-availability messaging, authorized live-provider compatibility and complete manual accessibility checks. See the [release plan](../docs/release-plan.md) before publication.
+Analysis now identifies unavailable optional sources without discarding usable output, and partial results can recover on reload. Remaining work: provider rate/backoff policy and in-flight deduplication, deeper match schemas, homepage form-availability messaging, authorized live-provider compatibility and complete manual accessibility checks. See the [release plan](../docs/release-plan.md) before publication.
