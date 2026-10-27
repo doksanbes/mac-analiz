@@ -6,8 +6,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        outfit: ['Outfit', 'sans-serif'],
-        manrope: ['Manrope', 'sans-serif'],
+        outfit: ['Arial', 'Helvetica', 'sans-serif'],
+        manrope: ['Arial', 'Helvetica', 'sans-serif'],
       },
       colors: {
         surface: {

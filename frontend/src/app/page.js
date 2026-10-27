@@ -51,12 +51,19 @@ function StatusBadge({ status }) {
 
 function MiniFormDots({ form }) {
   if (!form) return null
+  const labels = { G: 'Galibiyet', B: 'Beraberlik', M: 'Mağlubiyet' }
   return (
     <div className="flex items-center gap-1 mt-0.5">
       {form.split('').slice(0, 5).map((c, i) => {
         const colors = { G: 'bg-emerald-500', B: 'bg-amber-400', M: 'bg-red-500' }
         return colors[c] ? (
-          <div key={i} className={`w-2 h-2 rounded-full ${colors[c]}`} />
+          <span
+            key={i}
+            role="img"
+            aria-label={labels[c]}
+            title={labels[c]}
+            className={`w-2 h-2 rounded-full ${colors[c]}`}
+          />
         ) : null
       })}
     </div>
@@ -79,13 +86,7 @@ function MatchCard({ match, index, form }) {
       <div className="rounded-2xl bg-surface-card border border-white/[0.08] p-6 flex flex-col gap-4 relative overflow-hidden transition-all duration-300 hover:bg-surface-elevated hover:border-white/20 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgba(0,0,0,0.4)] cursor-pointer h-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {match.competition?.emblem && (
-              <img
-                src={match.competition.emblem}
-                alt=""
-                className="w-5 h-5 object-contain"
-              />
-            )}
+
             <span className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-500">
               {match.competition?.name || 'Bilinmeyen Lig'}
             </span>
@@ -96,14 +97,12 @@ function MatchCard({ match, index, form }) {
         <div className="flex flex-col gap-3 flex-1">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {match.homeTeam?.crest && (
-                <img src={match.homeTeam.crest} alt="" className="w-7 h-7 object-contain" />
-              )}
+
               <div className="flex flex-col">
                 <span className="text-base font-semibold text-white">
                   {match.homeTeam?.shortName || match.homeTeam?.name || 'Ev Sahibi'}
                 </span>
-                <MiniFormDots form={form?.home} />
+                <MiniFormDots form={form?.home_form} />
               </div>
             </div>
             {hasScore && (
@@ -115,14 +114,12 @@ function MatchCard({ match, index, form }) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {match.awayTeam?.crest && (
-                <img src={match.awayTeam.crest} alt="" className="w-7 h-7 object-contain" />
-              )}
+
               <div className="flex flex-col">
                 <span className="text-base font-semibold text-white">
                   {match.awayTeam?.shortName || match.awayTeam?.name || 'Deplasman'}
                 </span>
-                <MiniFormDots form={form?.away} />
+                <MiniFormDots form={form?.away_form} />
               </div>
             </div>
             {hasScore && (
@@ -214,9 +211,7 @@ export default function Home() {
       <section className="relative py-16 sm:py-24">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage: "url('https://images.pexels.com/photos/3991976/pexels-photo-3991976.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940')"
-          }}
+          style={{ backgroundImage: "radial-gradient(ellipse at top, #064e3b 0%, #0a0a0a 75%)" }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-surface-base" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

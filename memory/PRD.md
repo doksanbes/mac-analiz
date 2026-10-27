@@ -1,64 +1,28 @@
-# Maç Analiz - PRD
+# Maç Analiz — current project specification
 
-## Problem Statement
-Turkish football match analysis app with dark theme (grey + green accents). Lists today's matches, match detail page. Uses football-data.org API. No auth/payments/betting/AI.
+Updated October 27, 2026 for the local `0.1.0-rc.1` source candidate. This replaces generated historical notes with unsupported dates and obsolete setup assumptions. It does not claim a published release, live validation or adoption.
 
-## Architecture
-- **Frontend**: Next.js 14 (App Router) + Tailwind CSS + Lucide Icons (port 3000)
-- **Backend**: FastAPI + httpx (port 8001)
-- **API**: football-data.org v4
+## Intended behavior
 
-## User Personas
-- Football fans who want to track today's matches
-- Turkish-speaking users needing match analysis data
+- Turkish football match list, match details, scores/status and recent form.
+- Deterministic analysis text using recent team results, head-to-head data and heuristic rules; this is not validated forecasting.
+- Loading, error and empty states; live detail refresh every 30 seconds.
+- Dark interface with responsive cards, system fonts and local CSS gradients.
+- No authentication, payment or betting flow.
 
-## Core Requirements
-- Dark theme with green accents
-- All UI text in Turkish
-- Home page: today's match list in cards
-- Match Detail page: team info, score, status, analysis placeholders
-- Loading/Error/Empty states
-- Mobile responsive
-- API key via environment variable only
+## Architecture and contracts
 
-## What's Been Implemented (Jan 2026)
-- [x] FastAPI backend with /api/matches, /api/match/{id}, /api/health
-- [x] Next.js frontend with App Router
-- [x] Home page with hero section + match card grid
-- [x] Match detail page with scoreboard + info cards + analysis placeholders
-- [x] Turkish text with proper diacritical marks
-- [x] Dark theme (#0A0A0A base, #141415 cards, #10B981 accent)
-- [x] football-data.org API integration working with live data
-- [x] Error state with Turkish message when API key not configured
-- [x] Loading skeleton cards + empty state
-- [x] Mobile responsive design
-- [x] Glassmorphism header + stadium background hero
-- [x] Staggered card animations
-- [x] dotenv loading for environment variables
-- [x] Minimal requirements.txt (fastapi, uvicorn, httpx, python-dotenv)
+- Next.js 16 / React 19 / Tailwind frontend on loopback port 3000.
+- FastAPI / httpx backend on loopback port 8001, using football-data.org v4.
+- Frontend `/api` requests use the configured server-side Next proxy by default.
+- GET endpoints: `/api/health`, `/api/matches`, `/api/matches/form`, `/api/match/{id}`, `/api/match/{id}/analysis`.
+- Provider keys remain backend-only. Match data is cached in memory for 120 seconds.
+- Form-list primary failures return explicit errors; successful empty schedules remain successful empty results.
 
-- [x] Analysis system: 5 data-driven cards (Maç Özeti, KG Analizi, Gol Analizi, MS Eğilimi, Risk Notu)
-- [x] Real stats: last 15 matches, KG/Üst percentages, form strings, W-D-L records
-- [x] Head-to-head data integration
-- [x] Two-legged tie detection (Champions League knockout)
-- [x] In-memory cache (120s TTL) for API rate limiting
-- [x] Hızlı Bakış (Quick Summary) box: 4 short tags (Ana Senaryo, Alternatif, Taraf Eğilimi, Risk Seviyesi)
-- [x] Risk level color-coded (green/amber/orange/red)
-- [x] Form dots visual: colored dots (G=green, B=yellow, M=red) below team names in scoreboard with hover tooltips
-- [x] Backend /api/match/{id}/analysis endpoint with parallel data fetching
+## Maintenance and boundaries
 
-## API Endpoints
-- GET /api/health - System status
-- GET /api/matches - Today's matches
-- GET /api/match/{id} - Single match detail
-- GET /api/match/{id}/analysis - Rule-based match analysis (4 cards)
+See the [README](../README.md) for reproducible setup and [development notes](../docs/development.md) for test boundaries. Tests use synthetic fixtures and mocked responses; no provider key or real dataset is needed. CI covers backend contracts and frontend build/browser checks; GitHub execution requires an approved push.
 
-## Setup
-1. Get API key from football-data.org
-2. Add to /app/backend/.env: FOOTBALL_DATA_API_TOKEN=your_key
+Original-code MIT scope, owner provenance declarations and residual uncertainty are recorded in [rights and assets](../docs/rights-and-assets.md). Dependency icons retain separate notices. Provider data and graphics are not MIT-licensed. No remote photos, fonts, logos, captured reports or compiled output belong in the source candidate.
 
-## Backlog
-- P0: None (MVP complete)
-- P1: Live score auto-refresh, match statistics display
-- P2: League filtering, search functionality
-- P3: Match prediction/analysis content, historical data
+Remaining work: optional-data warnings, bounded concurrency/cache growth, stronger match schemas, authorized live-provider compatibility and complete manual accessibility checks. See the [release plan](../docs/release-plan.md) before publication.
