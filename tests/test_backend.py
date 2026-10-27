@@ -57,8 +57,10 @@ class OfflineAPI(unittest.TestCase):
         if path == '/v4/matches/9001':
             return httpx.Response(200, json=match())
         if path in ('/v4/teams/101/matches', '/v4/teams/202/matches'):
+            self.assertEqual(dict(request.url.params), {'status': 'FINISHED', 'limit': '15'})
             return httpx.Response(200, json={'matches': [match()]})
         if path == '/v4/matches/9001/head2head':
+            self.assertEqual(dict(request.url.params), {'limit': '10'})
             return httpx.Response(200, json={'matches': []})
         raise AssertionError('Unexpected fixture request: ' + path)
 
@@ -146,12 +148,83 @@ class OfflineAPI(unittest.TestCase):
         self.assertEqual(response.json()['home_form'], 'G')
         self.assertEqual(response.json()['away_form'], 'M')
         self.assertEqual(set(response.json()), {'hizli_bakis', 'home_form', 'away_form', 'mac_ozeti',
-                                              'kg_analizi', 'gol_analizi', 'ms_egilimi', 'risk_notu'})
+                                              'kg_analizi', 'gol_analizi', 'ms_egilimi', 'risk_notu', 'data_warnings'})
 
     def test_invalid_match_identifier_is_rejected_without_provider_call(self):
         with self.client(self.success), TestClient(server.app) as client:
             self.assertEqual(client.get('/api/match/not-a-number').status_code, 422)
         self.assertEqual(self.requests, [])
+
+    def test_analysis_warns_when_optional_sources_fail(self):
+        def failure(kind, request):
+            if request.url.path == '/v4/matches/9001':
+                return self.success(request)
+            if kind == 'timeout':
+                raise httpx.ReadTimeout('synthetic private transport detail', request=request)
+            if kind == 'transport':
+                raise httpx.ConnectError('synthetic private transport detail', request=request)
+            if kind == 'json':
+                return httpx.Response(200, text='not json')
+            if kind == 'shape':
+                return httpx.Response(200, json={'matches': None})
+            return httpx.Response(kind, json={'detail': 'synthetic private provider detail'})
+
+        for kind in (403, 429, 'timeout', 'transport', 'json', 'shape'):
+            server._cache.clear()
+            with self.subTest(kind=kind):
+                with self.client(lambda request: failure(kind, request)), TestClient(server.app) as client:
+                    response = client.get('/api/match/9001/analysis')
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()['data_warnings'], ['home_recent', 'away_recent', 'head_to_head'])
+                self.assertIn('mac_ozeti', response.json())
+                self.assertNotIn('synthetic private', response.text)
+                self.assertNotIn('analysis_9001', server._cache)
+
+    def test_analysis_identifies_only_the_unavailable_source(self):
+        def handler(request):
+            if request.url.path == '/v4/teams/101/matches':
+                return httpx.Response(429)
+            return self.success(request)
+        with self.client(handler), TestClient(server.app) as client:
+            data = client.get('/api/match/9001/analysis').json()
+        self.assertEqual(data['data_warnings'], ['home_recent'])
+        self.assertEqual(data['home_form'], '')
+        self.assertEqual(data['away_form'], 'M')
+
+    def test_valid_empty_history_is_not_a_provider_failure(self):
+        def handler(request):
+            if request.url.path == '/v4/matches/9001':
+                return self.success(request)
+            return httpx.Response(200, json={'matches': []})
+        with self.client(handler), TestClient(server.app) as client:
+            data = client.get('/api/match/9001/analysis').json()
+        self.assertEqual(data['data_warnings'], [])
+        self.assertEqual(data['home_form'], '')
+        self.assertIn('analysis_9001', server._cache)
+
+    def test_partial_analysis_can_recover_without_waiting_for_cache_expiry(self):
+        def handler(request):
+            if request.url.path == '/v4/teams/101/matches':
+                return httpx.Response(429)
+            return self.success(request)
+        with self.client(handler), TestClient(server.app) as client:
+            self.assertEqual(client.get('/api/match/9001/analysis').json()['data_warnings'], ['home_recent'])
+        with self.client(self.success), TestClient(server.app) as client:
+            data = client.get('/api/match/9001/analysis').json()
+        self.assertEqual(data['data_warnings'], [])
+        self.assertEqual(data['home_form'], 'G')
+        self.assertIn('analysis_9001', server._cache)
+
+    def test_partial_forms_keep_the_contract_and_can_recover(self):
+        def handler(request):
+            if request.url.path == '/v4/teams/101/matches':
+                return httpx.Response(429)
+            return self.success(request)
+        with self.client(handler), TestClient(server.app) as client:
+            self.assertEqual(client.get('/api/matches/form').json(), {'9001': {'home_form': '', 'away_form': 'M'}})
+        self.assertNotIn('all_form', server._cache)
+        with self.client(self.success), TestClient(server.app) as client:
+            self.assertEqual(client.get('/api/matches/form').json()['9001']['home_form'], 'G')
 
 
 class Statistics(unittest.TestCase):

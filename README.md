@@ -2,7 +2,7 @@
 
 A Turkish football match browser and rule-based analysis app using FastAPI, Next.js and football-data.org. Match lists, scores, recent form, analysis and live refresh remain the intended functionality. No authentication, payment or betting flow is added.
 
-**Status:** local source release candidate `0.1.0-rc.1`, pending publication approval. No release or adoption is claimed. See [rights and assets](docs/rights-and-assets.md) and the [changelog](CHANGELOG.md).
+**Status:** source candidate `0.1.0-rc.1` is merged into `main`; no tag or GitHub release has been published. No release or adoption is claimed. See [rights and assets](docs/rights-and-assets.md) and the [changelog](CHANGELOG.md).
 
 ## License
 
@@ -50,7 +50,7 @@ cd frontend
 npm ci --ignore-scripts
 ```
 
-From the repository root, start `.venv/bin/python -m uvicorn backend.server:app --reload --host 127.0.0.1 --port 8001`. Run `npm run dev` from `frontend` in a second terminal. These commands are documented; proposed Linux CI has not run publicly.
+From the repository root, start `.venv/bin/python -m uvicorn backend.server:app --reload --host 127.0.0.1 --port 8001`. Run `npm run dev` from `frontend` in a second terminal. Windows/Linux backend and Linux frontend CI passed after [PR #1](https://github.com/doksanbes/mac-analiz/pull/1) merged ([verified run](https://github.com/doksanbes/mac-analiz/actions/runs/40546110561)). macOS setup has not been validated by CI.
 
 ## Offline tests and build
 
@@ -97,6 +97,6 @@ Form retrieval now shares match-list error handling: rate limits return 429, tim
 
 Football data provided by the [Football-Data.org API](https://www.football-data.org/). Live operation requires your own registered, application-scoped key and a plan covering the endpoints you use. Follow the [provider terms](https://www.football-data.org/about), rate/fair-use limits and attribution requirement. Provider responses are not MIT-licensed or an open dataset. The terms restrict referencing obtained data after subscription cancellation and require graphics-owner permission for logos/photos. Do not commit keys, cache dumps or live response fixtures. Unverified images/fonts, crests, generated builds and captured reports are excluded from this source candidate. The UI uses names, local CSS and system fonts.
 
-Analysis uses deterministic rules, not validated predictions. Optional history/head-to-head requests can still degrade to missing data. Partial-data warnings, bounded request concurrency/cache size, and full accessibility review remain future work. No adoption or accuracy claims are made.
+Analysis uses deterministic rules, not validated predictions. If recent-team or head-to-head requests fail, the detail page identifies the unavailable sources while keeping usable analysis visible. The API adds `data_warnings` codes (`home_recent`, `away_recent`, `head_to_head`); successful empty histories are not failures. Partial analysis/form results are not cached, so a later reload can recover; successful source responses still use the 120-second cache. There is no automatic retry or rate-limit backoff. Bounded request concurrency/cache size, deeper provider schemas and full accessibility review remain future work. No adoption or accuracy claims are made.
 
-See [the release plan](docs/release-plan.md). Publication requires approval; CI has no publish job.
+See [the release plan](docs/release-plan.md). New changes may be reviewed through PRs; merge, tag, release and deployment require their own approval. CI has no publish job.

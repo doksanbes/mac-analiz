@@ -21,8 +21,8 @@ Updated October 27, 2026 for the local `0.1.0-rc.1` source candidate. This repla
 
 ## Maintenance and boundaries
 
-See the [README](../README.md) for reproducible setup and [development notes](../docs/development.md) for test boundaries. Tests use synthetic fixtures and mocked responses; no provider key or real dataset is needed. CI covers backend contracts and frontend build/browser checks; GitHub execution requires an approved push.
+See the [README](../README.md) for reproducible setup and [development notes](../docs/development.md) for test boundaries. Tests use synthetic fixtures and mocked responses; no provider key or real dataset is needed. CI covers Windows/Linux backend contracts and Linux frontend build/browser checks. It runs on pull requests, pushes to `main` and manual dispatch; all three jobs passed after PR #1 merged.
 
 Original-code MIT scope, owner provenance declarations and residual uncertainty are recorded in [rights and assets](../docs/rights-and-assets.md). Dependency icons retain separate notices. Provider data and graphics are not MIT-licensed. No remote photos, fonts, logos, captured reports or compiled output belong in the source candidate.
 
-Remaining work: optional-data warnings, bounded concurrency/cache growth, stronger match schemas, authorized live-provider compatibility and complete manual accessibility checks. See the [release plan](../docs/release-plan.md) before publication.
+Analysis now identifies unavailable optional sources without discarding usable output, and partial results can recover on reload. Remaining work: bounded concurrency/cache growth, deeper match schemas, homepage form-availability messaging, authorized live-provider compatibility and complete manual accessibility checks. See the [release plan](../docs/release-plan.md) before publication.

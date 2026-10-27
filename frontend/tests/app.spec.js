@@ -31,7 +31,9 @@ async function offline(page, mode = 'matches') {
     }
     if (path === '/api/matches/form') return route.fulfill({ json: { 9001: { home_form: 'G', away_form: 'M' } } })
     if (path === '/api/match/9001') return route.fulfill({ json: fixture })
-    if (path === '/api/match/9001/analysis') return route.fulfill({ json: analysis })
+    if (path === '/api/match/9001/analysis') return route.fulfill({ json: {
+      ...analysis, data_warnings: mode === 'partial' ? ['home_recent', 'head_to_head'] : [],
+    } })
     throw new Error('Unexpected API request: ' + path)
   })
   return { external, errors }
@@ -49,11 +51,32 @@ test('preserves match browsing and analysis without external assets or data', as
   await expect(page.getByTestId('match-scoreboard')).toContainText('Example North')
   await expect(page.getByTestId('analysis-title')).toBeVisible()
   await expect(page.getByText('Synthetic match summary.')).toBeVisible()
+  await expect(page.getByTestId('analysis-data-warning')).toHaveCount(0)
   await expect(page.locator('img')).toHaveCount(0)
   expect(record.external).toEqual([])
   expect(record.errors).toEqual([])
   const accessibility = await new AxeBuilder({ page }).withRules(['image-alt', 'html-has-lang', 'document-title', 'link-name', 'button-name']).analyze()
   expect(accessibility.violations).toEqual([])
+})
+
+test('shows missing analysis sources and removes the warning after recovery', async ({ page }) => {
+  const record = await offline(page, 'partial')
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto('/match/9001')
+  const warning = page.getByRole('status', { name: 'Analiz veri durumu' })
+  await expect(warning).toContainText('Eksik veriyle analiz')
+  await expect(warning).toContainText('Ev sahibinin son maçları')
+  await expect(warning).toContainText('İki takımın geçmiş karşılaşmaları')
+  await expect(warning).not.toContainText('Deplasman takımının son maçları')
+  await expect(page.getByText('Synthetic match summary.')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375)
+  await page.unroute('**/api/**')
+  await offline(page)
+  await page.reload()
+  await expect(page.getByTestId('analysis-grid')).toBeVisible()
+  await expect(warning).toHaveCount(0)
+  expect(record.external).toEqual([])
+  expect(record.errors).toEqual([])
 })
 
 test('distinguishes an empty schedule from a provider error and supports retry', async ({ page }) => {
